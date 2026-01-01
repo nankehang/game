@@ -59,6 +59,14 @@ class Game:
                     # Toggle debug mode
                     self.debug_mode = not self.debug_mode
                     print(f"[DEBUG MODE] {'ON' if self.debug_mode else 'OFF'}")
+                elif event.key == pygame.K_1:
+                    # Add heart (like system)
+                    if self.player.max_hp < 10:  # Max 10 hearts
+                        self.player.max_hp += 1
+                        self.player.current_hp = self.player.max_hp  # Full heal
+                        print(f"[HEART] +1 Heart collected! Max HP: {self.player.max_hp}")
+                    else:
+                        print("[HEART] Max hearts reached (10)!")
                 elif event.key == pygame.K_m:
                     # Trigger meteor shower (for testing)
                     if not self.world.meteor_shower_active:
@@ -72,11 +80,14 @@ class Game:
                     self.player.release_jump()
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
-                    # Manual mining at mouse position
+                    # Manual mining at mouse position (with level bonus)
                     mouse_x, mouse_y = event.pos
                     world_x = (mouse_x + self.camera_x) // BLOCK_SIZE
                     world_y = (mouse_y + self.camera_y) // BLOCK_SIZE
-                    self.world.mine_block_at(world_x, world_y, MANUAL_MINE_DAMAGE)
+                    speed_multiplier = 1.0 + self.player.mining_speed_bonus
+                    damage = MANUAL_MINE_DAMAGE * speed_multiplier
+                    print(f"[DEBUG] Manual mine: Base={MANUAL_MINE_DAMAGE}, Multiplier={speed_multiplier:.2f}x, Damage={damage:.2f}")
+                    self.world.mine_block_at(world_x, world_y, damage)
         
         # Continuous input
         keys = pygame.key.get_pressed()
@@ -95,12 +106,12 @@ class Game:
         
         # Check if player hit bedrock or fell out of world
         if self.player.fell_to_bedrock:
-            print("[GAME] 💀 Player reached bedrock! Respawning at surface...")
+            print("[GAME] Player reached bedrock! Respawning at surface...")
             self.respawn_player()
         
         max_y = (BEDROCK_START + 5) * BLOCK_SIZE  # 5 blocks below bedrock (backup)
         if self.player.y > max_y:
-            print("[GAME] ⚠️ Player fell out of world! Respawning...")
+            print("[GAME] Player fell out of world! Respawning...")
             self.respawn_player()
         
         # Update world (TNT, particles) - pass player for explosion knockback
@@ -146,6 +157,9 @@ class Game:
         # Render meteors (behind player but in front of blocks)
         self.renderer.render_meteors(self.world, camera_x, camera_y)
         
+        # Render rare items with gorgeous effects (before player)
+        self.renderer.render_rare_items(self.world, camera_x, camera_y)
+        
         # Render player with debug mode
         self.renderer.render_player(self.player, camera_x, camera_y, self.debug_mode)
         
@@ -162,6 +176,13 @@ class Game:
             flash_surface.set_alpha(int(self.flash_alpha))
             self.screen.blit(flash_surface, (0, 0))
         
+        # Death flash (red overlay)
+        if self.player.death_flash > 0:
+            death_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            death_surface.fill((255, 0, 0))
+            death_surface.set_alpha(int(self.player.death_flash * 150))
+            self.screen.blit(death_surface, (0, 0))
+        
         # Render UI
         self.render_ui()
         
@@ -170,11 +191,59 @@ class Game:
     def render_ui(self):
         """Render UI overlay"""
         font = pygame.font.Font(None, 24)
+        font_large = pygame.font.Font(None, 36)
         
         # Depth indicator
         depth = max(0, (self.player.y // BLOCK_SIZE) - 10)
         depth_text = font.render(f"Depth: {depth}m", True, (255, 255, 255))
         self.screen.blit(depth_text, (10, 10))
+        
+        # Mining Level Display (with glow effect)
+        level = self.player.mining_level
+        bonus_percent = int(self.player.mining_speed_bonus * 100)
+        
+        if level > 0:
+            # Level text with color based on level
+            if level >= 15:
+                level_color = (255, 50, 255)  # Epic purple
+            elif level >= 10:
+                level_color = (255, 215, 0)  # Gold
+            elif level >= 5:
+                level_color = (0, 255, 255)  # Cyan
+            else:
+                level_color = (0, 255, 0)  # Green
+            
+            level_text = font_large.render(f"⛏ Lv.{level} (+{bonus_percent}%)", True, level_color)
+            
+            # Glow effect when leveling up
+            if self.player.level_up_flash > 0:
+                import math
+                pulse = abs(math.sin(pygame.time.get_ticks() / 100))
+                glow_alpha = int(150 * pulse)
+                glow_surf = font_large.render(f"⛏ Lv.{level} (+{bonus_percent}%)", True, (255, 255, 255))
+                glow_surf.set_alpha(glow_alpha)
+                self.screen.blit(glow_surf, (12, 32))
+                self.screen.blit(glow_surf, (8, 32))
+                self.screen.blit(glow_surf, (10, 30))
+                self.screen.blit(glow_surf, (10, 34))
+            
+            self.screen.blit(level_text, (10, 32))
+        
+        # TNT Power Display
+        tnt_level = self.player.tnt_power_level
+        if tnt_level > 0:
+            tnt_bonus_percent = int(self.player.tnt_power_bonus * 100)
+            
+            # Color based on power level
+            if tnt_level >= 10:
+                tnt_color = (255, 100, 0)  # Orange-red
+            elif tnt_level >= 5:
+                tnt_color = (255, 150, 0)  # Orange
+            else:
+                tnt_color = (255, 200, 0)  # Yellow
+            
+            tnt_text = font_large.render(f"💥 TNT Lv.{tnt_level} (+{tnt_bonus_percent}%)", True, tnt_color)
+            self.screen.blit(tnt_text, (10, 65))
         
         # TNT statistics
         active_tnt = len(self.world.tnt_list)
@@ -191,11 +260,12 @@ class Game:
             "A/D or Arrows: Move",
             "SPACE: Manual TNT (player pos)",
             "Click: Mine Block",
+            "1: Add Heart (+1 Max HP)",
             "R: Reset Position",
             "F3: Toggle Debug",
             "ESC: Quit"
         ]
-        y = 40
+        y = 100  # Start lower to account for level displays
         for control in controls:
             text = font.render(control, True, (200, 200, 200))
             self.screen.blit(text, (10, y))

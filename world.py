@@ -274,13 +274,23 @@ class World:
                     player.apply_knockback(0, -TNT_KNOCKBACK_FORCE * 1.5, 1.0)
                     print(f"[TNT] DIRECT HIT! Maximum knockback!")
         
-        # Destroy blocks in radius
+        # Destroy blocks in radius (with TNT power bonus)
         destroyed_count = 0
-        for dy in range(-TNT_EXPLOSION_RADIUS, TNT_EXPLOSION_RADIUS + 1):
-            for dx in range(-TNT_EXPLOSION_RADIUS, TNT_EXPLOSION_RADIUS + 1):
+        
+        # Calculate boosted radius from player's TNT power level
+        base_radius = TNT_EXPLOSION_RADIUS
+        if player:
+            radius_bonus = int(player.tnt_power_level * 0.5)  # +0.5 blocks per level
+            explosion_radius = base_radius + radius_bonus
+            print(f"[TNT] Explosion radius: {explosion_radius} (base: {base_radius}, bonus: +{radius_bonus})")
+        else:
+            explosion_radius = base_radius
+        
+        for dy in range(-explosion_radius, explosion_radius + 1):
+            for dx in range(-explosion_radius, explosion_radius + 1):
                 # Check if in circular radius
                 distance = (dx * dx + dy * dy) ** 0.5
-                if distance <= TNT_EXPLOSION_RADIUS:
+                if distance <= explosion_radius:
                     bx = center_x + dx
                     by = center_y + dy
                     
@@ -299,6 +309,34 @@ class World:
             self.particles.append(particle)
         
         print(f"Explosion destroyed {destroyed_count} blocks")
+        
+        # RARE ITEM DROPS from TNT! 
+        drop_chance = random.random()
+        if drop_chance < 0.3:  # 30% chance to drop rare item
+            rare_items = ['magnet', 'double_jump', 'speed_boost', 'shield', 'block_breaker']
+            item_type = random.choice(rare_items)
+            
+            # Spawn item at explosion location with upward velocity
+            item_x = tnt.x + random.uniform(-BLOCK_SIZE, BLOCK_SIZE)
+            item_y = tnt.y - BLOCK_SIZE * 2  # Spawn above explosion
+            
+            self.spawn_item(item_x, item_y, item_type)
+            print(f"[RARE DROP] {item_type}!")
+            
+            # Extra particles for item drop
+            for _ in range(20):
+                particle = Particle(item_x, item_y, (255, 255, 0))  # Gold sparkles
+                particle.velocity_x = random.uniform(-100, 100)
+                particle.velocity_y = random.uniform(-150, -50)
+                particle.lifetime = 0.8
+                self.particles.append(particle)
+        
+        # 15% chance to drop heart item
+        elif drop_chance < 0.45:
+            item_x = tnt.x + random.uniform(-BLOCK_SIZE, BLOCK_SIZE)
+            item_y = tnt.y - BLOCK_SIZE * 2
+            self.spawn_item(item_x, item_y, 'heart')
+            print(f"[HEART DROP] Heart item!")
         
         # Check for chain reactions
         self._check_chain_reaction(center_x, center_y)
@@ -355,9 +393,52 @@ class World:
         for item in self.items[:]:
             item.update(dt, self)
             
+            # Remove expired items
+            if item.lifetime <= 0:
+                print(f"[ITEM] {item.item_type} disappeared (not collected)")
+                self.items.remove(item)
+                continue
+            
             # Check if player collects item
             if player and item.can_collect(player):
                 print(f"[ITEM] Player collected {item.item_type}!")
+                
+                # Special item: Heart (increases max HP)
+                if item.item_type == 'heart':
+                    player.max_hp += 1
+                    player.current_hp += 1  # Also heal
+                    print(f"[HEART] +1 Max HP! Total: {player.max_hp}")
+                
+                # Crystal and rare ore upgrade TNT power
+                elif item.item_type in ['crystal', 'rare_ore']:
+                    player.tnt_power_level += 1
+                    player.tnt_power_bonus = player.tnt_power_level * 0.10
+                    bonus_percent = int(player.tnt_power_bonus * 100)
+                    print(f"[TNT POWER] +1 TNT Power Level! Level: {player.tnt_power_level} | Bonus: +{bonus_percent}%")
+                    
+                    # Also heal 1 HP
+                    if player.current_hp < player.max_hp:
+                        player.current_hp += 1
+                        print(f"[HP] HP Restored! Current HP: {player.current_hp}/{player.max_hp}")
+                
+                # Level up mining speed for rare items (excluding crystal/rare_ore)
+                elif item.is_rare:
+                    player.mining_level += 1
+                    player.level_up_flash = 0.5  # Flash effect for 0.5 seconds
+                    # Recalculate bonus immediately to show correct value
+                    player.mining_speed_bonus = min(2.0, player.mining_level * 0.10)
+                    bonus_percent = int(player.mining_speed_bonus * 100)
+                    print(f"[LEVEL UP] Mining Level: {player.mining_level} | Speed Bonus: +{bonus_percent}%")
+                    
+                    # Increase max HP on level up (every level)
+                    player.max_hp += 1
+                    print(f"[HEART] +1 Max HP from level up! Total: {player.max_hp}")
+                    
+                    # Heal 1 HP when collecting rare items
+                    if player.current_hp < player.max_hp:
+                        player.current_hp += 1
+                        print(f"[HP] HP Restored! Current HP: {player.current_hp}/{player.max_hp}")
+                
                 self.items.remove(item)
         
         # Update meteors
@@ -456,10 +537,12 @@ class World:
         
         # Spawn rare items (crystal or rare ore) - guaranteed drop!
         spawn_chance = random.random()
-        if spawn_chance < 0.80:  # 80% chance for crystal
+        if spawn_chance < 0.60:  # 60% chance for crystal
             self.spawn_item(block_x * BLOCK_SIZE, block_y * BLOCK_SIZE, 'crystal')
-        else:  # 20% chance for rare ore
+        elif spawn_chance < 0.80:  # 20% chance for rare ore
             self.spawn_item(block_x * BLOCK_SIZE, block_y * BLOCK_SIZE, 'rare_ore')
+        else:  # 20% chance for heart
+            self.spawn_item(block_x * BLOCK_SIZE, block_y * BLOCK_SIZE, 'heart')
         
         # Soft sound effect
         if SOUND_ENABLED:

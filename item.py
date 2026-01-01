@@ -20,9 +20,23 @@ class Item:
         self.velocity_y = 0
         self.on_ground = False
         
-        # Animation
+        # Enhanced Animation
         self.float_timer = 0
         self.float_offset = 0
+        self.rotation = 0
+        self.rotation_speed = 45  # degrees per second
+        self.glow_pulse = 0
+        self.sparkle_timer = 0
+        self.sparkles = []
+        self.spawn_timer = 0
+        self.scale_pulse = 1.0
+        
+        # Rare items have special effects
+        self.is_rare = item_type in ['magnet', 'double_jump', 'speed_boost', 'shield', 'block_breaker', 'crystal', 'rare_ore', 'heart']
+        
+        # Lifetime - items disappear after 10 seconds
+        self.lifetime = 10.0
+        self.lifetime_warning = False  # Flash when about to expire
         
         # Generate texture
         self.texture = self._generate_texture()
@@ -70,6 +84,49 @@ class Item:
             highlight_color = (220, 140, 255)
             has_glow = True
             glow_color = (180, 100, 220)
+        # NEW RARE ITEMS FROM TNT
+        elif self.item_type == 'magnet':
+            # Cyan magnet effect
+            handle_color = (0, 255, 255)
+            head_color = (0, 200, 255)
+            highlight_color = (100, 255, 255)
+            has_glow = True
+            glow_color = (0, 255, 255)
+        elif self.item_type == 'double_jump':
+            # Green wings/feather
+            handle_color = (0, 255, 0)
+            head_color = (0, 200, 0)
+            highlight_color = (100, 255, 100)
+            has_glow = True
+            glow_color = (0, 255, 0)
+        elif self.item_type == 'speed_boost':
+            # Yellow lightning
+            handle_color = (255, 255, 0)
+            head_color = (255, 200, 0)
+            highlight_color = (255, 255, 100)
+            has_glow = True
+            glow_color = (255, 255, 0)
+        elif self.item_type == 'shield':
+            # Blue shield
+            handle_color = (0, 128, 255)
+            head_color = (0, 100, 200)
+            highlight_color = (100, 180, 255)
+            has_glow = True
+            glow_color = (0, 128, 255)
+        elif self.item_type == 'block_breaker':
+            # Red explosive
+            handle_color = (255, 0, 0)
+            head_color = (200, 0, 0)
+            highlight_color = (255, 100, 100)
+            has_glow = True
+            glow_color = (255, 0, 0)
+        elif self.item_type == 'heart':
+            # Pink/Red heart
+            handle_color = (255, 100, 150)
+            head_color = (255, 50, 100)
+            highlight_color = (255, 150, 200)
+            has_glow = True
+            glow_color = (255, 100, 150)
         else:  # Default wood
             handle_color = (139, 90, 43)
             head_color = (101, 67, 33)
@@ -77,8 +134,10 @@ class Item:
             has_glow = False
         
         # Generate texture based on item type
-        if self.item_type in ['crystal', 'rare_ore']:
+        if self.item_type in ['crystal', 'rare_ore', 'heart']:
             self._draw_gem(surface, handle_color, head_color, highlight_color, has_glow, glow_color)
+        elif self.item_type in ['magnet', 'double_jump', 'speed_boost', 'shield', 'block_breaker']:
+            self._draw_rare_item(surface, handle_color, head_color, highlight_color, has_glow, glow_color)
         else:
             self._draw_pickaxe(surface, handle_color, head_color, highlight_color, has_glow, glow_color)
         
@@ -197,6 +256,83 @@ class Item:
             if 0 <= px < BLOCK_SIZE and 0 <= py < BLOCK_SIZE:
                 surface.set_at((px, py), highlight_color)
     
+    def _draw_rare_item(self, surface, handle_color, head_color, highlight_color, has_glow, glow_color):
+        """Draw special rare items with unique shapes"""
+        center_x, center_y = BLOCK_SIZE // 2, BLOCK_SIZE // 2
+        
+        if self.item_type == 'magnet':
+            # U-shaped magnet
+            for y in range(center_y - 4, center_y + 5):
+                for x in [center_x - 4, center_x + 4]:  # Left and right bars
+                    if 0 <= x < BLOCK_SIZE and 0 <= y < BLOCK_SIZE:
+                        surface.set_at((x, y), head_color)
+            for x in range(center_x - 4, center_x + 5):  # Bottom bar
+                if 0 <= x < BLOCK_SIZE and center_y + 4 < BLOCK_SIZE:
+                    surface.set_at((x, center_y + 4), head_color)
+            # Highlights
+            surface.set_at((center_x - 4, center_y - 3), highlight_color)
+            surface.set_at((center_x + 4, center_y - 3), highlight_color)
+        
+        elif self.item_type == 'double_jump':
+            # Wings shape
+            wing_points = [
+                (center_x - 5, center_y), (center_x - 3, center_y - 3),
+                (center_x - 1, center_y), (center_x + 1, center_y),
+                (center_x + 3, center_y - 3), (center_x + 5, center_y)
+            ]
+            for px, py in wing_points:
+                if 0 <= px < BLOCK_SIZE and 0 <= py < BLOCK_SIZE:
+                    surface.set_at((px, py), head_color)
+                    if 0 <= px - 1 < BLOCK_SIZE and 0 <= py + 1 < BLOCK_SIZE:
+                        surface.set_at((px - 1, py + 1), head_color)
+                        surface.set_at((px, py + 1), head_color)
+        
+        elif self.item_type == 'speed_boost':
+            # Lightning bolt
+            bolt_points = [
+                (center_x, center_y - 5), (center_x - 1, center_y - 2),
+                (center_x + 1, center_y - 2), (center_x, center_y),
+                (center_x - 2, center_y), (center_x, center_y + 3),
+                (center_x + 1, center_y + 5)
+            ]
+            for i in range(len(bolt_points) - 1):
+                x1, y1 = bolt_points[i]
+                x2, y2 = bolt_points[i + 1]
+                if 0 <= x1 < BLOCK_SIZE and 0 <= y1 < BLOCK_SIZE:
+                    surface.set_at((x1, y1), head_color)
+                if 0 <= x2 < BLOCK_SIZE and 0 <= y2 < BLOCK_SIZE:
+                    surface.set_at((x2, y2), head_color)
+        
+        elif self.item_type == 'shield':
+            # Shield shape
+            for y in range(center_y - 4, center_y + 5):
+                width = 5 - abs(y - center_y) // 2
+                for x in range(center_x - width, center_x + width + 1):
+                    if 0 <= x < BLOCK_SIZE and 0 <= y < BLOCK_SIZE:
+                        surface.set_at((x, y), head_color)
+            # Cross pattern
+            for i in range(-2, 3):
+                if 0 <= center_x + i < BLOCK_SIZE and 0 <= center_y < BLOCK_SIZE:
+                    surface.set_at((center_x + i, center_y), highlight_color)
+                if 0 <= center_x < BLOCK_SIZE and 0 <= center_y + i < BLOCK_SIZE:
+                    surface.set_at((center_x, center_y + i), highlight_color)
+        
+        elif self.item_type == 'block_breaker':
+            # Explosive star
+            for angle in range(0, 360, 45):
+                rad = math.radians(angle)
+                for dist in range(2, 6):
+                    px = center_x + int(math.cos(rad) * dist)
+                    py = center_y + int(math.sin(rad) * dist)
+                    if 0 <= px < BLOCK_SIZE and 0 <= py < BLOCK_SIZE:
+                        color = highlight_color if dist > 4 else head_color
+                        surface.set_at((px, py), color)
+            # Center
+            for dy in range(-1, 2):
+                for dx in range(-1, 2):
+                    if 0 <= center_x + dx < BLOCK_SIZE and 0 <= center_y + dy < BLOCK_SIZE:
+                        surface.set_at((center_x + dx, center_y + dy), highlight_color)
+    
     def _point_in_polygon(self, x, y, polygon):
         """Check if point is inside polygon (ray casting algorithm)"""
         n = len(polygon)
@@ -216,9 +352,48 @@ class Item:
     
     def update(self, dt, world):
         """Update item physics and animation"""
-        # Floating animation
-        self.float_timer += dt * 2
-        self.float_offset = math.sin(self.float_timer) * 3
+        self.spawn_timer += dt
+        
+        # Update lifetime
+        self.lifetime -= dt
+        if self.lifetime <= 2.0 and not self.lifetime_warning:
+            self.lifetime_warning = True
+            print(f"[ITEM] {self.item_type} will disappear in {self.lifetime:.1f}s!")
+        
+        # Smooth floating animation with easing
+        self.float_timer += dt * 2.5
+        self.float_offset = math.sin(self.float_timer) * 4 + math.sin(self.float_timer * 2) * 1
+        
+        # Rotation animation (rare items spin)
+        if self.is_rare:
+            self.rotation += self.rotation_speed * dt
+            if self.rotation >= 360:
+                self.rotation -= 360
+        
+        # Glow pulse animation
+        self.glow_pulse += dt * 3
+        glow_intensity = (math.sin(self.glow_pulse) * 0.3 + 0.7)  # 0.4 to 1.0
+        
+        # Scale pulse for rare items
+        if self.is_rare:
+            self.scale_pulse = 1.0 + math.sin(self.float_timer * 1.5) * 0.1  # 0.9 to 1.1
+        
+        # Sparkle effects for rare items
+        if self.is_rare:
+            self.sparkle_timer += dt
+            if self.sparkle_timer >= 0.08:  # Spawn sparkle every 0.08s
+                self.sparkle_timer = 0
+                self._spawn_sparkle()
+        
+        # Update sparkles
+        for sparkle in self.sparkles[:]:
+            sparkle['lifetime'] -= dt
+            sparkle['y'] -= sparkle['speed'] * dt
+            sparkle['x'] += sparkle['drift'] * dt
+            sparkle['alpha'] = int(255 * max(0, sparkle['lifetime'] / sparkle['max_lifetime']))
+            
+            if sparkle['lifetime'] <= 0:
+                self.sparkles.remove(sparkle)
         
         # Gravity if not on ground
         if not self.on_ground:
@@ -237,6 +412,11 @@ class Item:
                 self.y = grid_y * BLOCK_SIZE - self.height
                 self.velocity_y = 0
                 self.on_ground = True
+                
+                # Bounce effect on landing
+                if self.spawn_timer < 1.0:  # Only bounce when first landing
+                    self.velocity_y = -150
+                    self.on_ground = False
     
     def can_collect(self, player):
         """Check if player is close enough to collect"""
@@ -249,6 +429,55 @@ class Item:
         
         return distance < collect_radius
     
+    def _spawn_sparkle(self):
+        """Create sparkle particle around item"""
+        import random
+        
+        # Get item color for sparkles
+        colors = {
+            'magnet': (0, 255, 255),
+            'double_jump': (0, 255, 0),
+            'speed_boost': (255, 255, 0),
+            'shield': (0, 128, 255),
+            'block_breaker': (255, 0, 0),
+            'crystal': (150, 220, 255),
+            'rare_ore': (180, 100, 220),
+            'diamond_pickaxe': (0, 255, 255),
+            'iron_pickaxe': (200, 220, 255),
+            'heart': (255, 100, 150),
+        }
+        
+        color = colors.get(self.item_type, (255, 255, 255))
+        
+        # Spawn sparkle in circular pattern
+        angle = random.uniform(0, math.pi * 2)
+        radius = random.uniform(8, 16)
+        
+        sparkle = {
+            'x': self.x + self.width / 2 + math.cos(angle) * radius,
+            'y': self.y + self.height / 2 + math.sin(angle) * radius,
+            'speed': random.uniform(20, 40),
+            'drift': random.uniform(-10, 10),
+            'lifetime': random.uniform(0.4, 0.8),
+            'max_lifetime': 0.8,
+            'alpha': 255,
+            'color': color,
+            'size': random.randint(1, 3)
+        }
+        self.sparkles.append(sparkle)
+    
     def get_render_y(self):
         """Get Y position with floating offset"""
         return self.y + self.float_offset
+    
+    def get_glow_alpha(self):
+        """Get current glow alpha for pulsing effect"""
+        return int((math.sin(self.glow_pulse) * 0.3 + 0.7) * 255)
+    
+    def get_scale(self):
+        """Get current scale for pulsing effect"""
+        return self.scale_pulse if self.is_rare else 1.0
+    
+    def get_rotation(self):
+        """Get current rotation angle"""
+        return self.rotation if self.is_rare else 0

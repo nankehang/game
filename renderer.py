@@ -339,6 +339,48 @@ class Renderer:
         
         self.screen.blit(texture, (screen_x, screen_y))
         
+        # Render HP hearts above player head
+        heart_size = 8
+        heart_spacing = 10
+        total_width = player.max_hp * heart_spacing - 2
+        hearts_x = screen_x + (32 - total_width) // 2  # Center above player
+        hearts_y = screen_y - 15  # Above player head
+        
+        for i in range(player.max_hp):
+            x = hearts_x + i * heart_spacing
+            
+            # Draw heart (filled or empty)
+            if i < player.current_hp:
+                # Filled heart (red)
+                if player.current_hp == 1:
+                    # Pulse when low HP
+                    import math
+                    pulse = abs(math.sin(pygame.time.get_ticks() / 200))
+                    heart_color = (int(255 * (0.7 + 0.3 * pulse)), 50, 50)
+                else:
+                    heart_color = (255, 50, 50)
+                
+                # Draw filled heart shape
+                pygame.draw.circle(self.screen, heart_color, (x + 2, hearts_y + 2), 3)
+                pygame.draw.circle(self.screen, heart_color, (x + 6, hearts_y + 2), 3)
+                pygame.draw.polygon(self.screen, heart_color, [
+                    (x, hearts_y + 3),
+                    (x + 4, hearts_y + 8),
+                    (x + 8, hearts_y + 3)
+                ])
+                # Shine
+                pygame.draw.circle(self.screen, (255, 150, 150), (x + 2, hearts_y + 1), 1)
+            else:
+                # Empty heart (dark outline)
+                outline_color = (80, 20, 20)
+                pygame.draw.circle(self.screen, outline_color, (x + 2, hearts_y + 2), 3, 1)
+                pygame.draw.circle(self.screen, outline_color, (x + 6, hearts_y + 2), 3, 1)
+                pygame.draw.polygon(self.screen, outline_color, [
+                    (x, hearts_y + 3),
+                    (x + 4, hearts_y + 8),
+                    (x + 8, hearts_y + 3)
+                ], 1)
+        
         # Draw mining indicator
         if player.is_mining:
             pygame.draw.circle(self.screen, (255, 215, 0), 
@@ -514,4 +556,195 @@ class Renderer:
                 pygame.draw.line(self.screen, trail_color, 
                                (trail_x, trail_y), 
                                (trail_x - 15, trail_y - 10), 2)
+    
+    def render_rare_items(self, world, camera_x, camera_y):
+        """Render items with gorgeous visual effects"""
+        import math
+        import random
+        
+        time = pygame.time.get_ticks() / 1000.0
+        
+        for item in world.items:
+            # Calculate screen position with floating
+            screen_x = int(item.x - camera_x)
+            screen_y = int(item.get_render_y() - camera_y)
+            
+            # Skip if off-screen (with margin)
+            if screen_x < -100 or screen_x > SCREEN_WIDTH + 100:
+                continue
+            if screen_y < -100 or screen_y > SCREEN_HEIGHT + 100:
+                continue
+            
+            # === RARE ITEM SPECIAL EFFECTS ===
+            if item.is_rare:
+                center_x = screen_x + item.width // 2
+                center_y = screen_y + item.height // 2
+                
+                # Get item glow color
+                glow_colors = {
+                    'magnet': (0, 255, 255),
+                    'double_jump': (0, 255, 0),
+                    'speed_boost': (255, 255, 0),
+                    'shield': (0, 128, 255),
+                    'block_breaker': (255, 0, 0),
+                    'crystal': (150, 220, 255),
+                    'rare_ore': (180, 100, 220),
+                    'diamond_pickaxe': (0, 255, 255),
+                    'heart': (255, 100, 150),
+                }
+                glow_color = glow_colors.get(item.item_type, (255, 255, 255))
+                
+                # === MULTI-LAYER GLOW RINGS ===
+                glow_surf = pygame.Surface((200, 200), pygame.SRCALPHA)
+                glow_center = (100, 100)
+                
+                # Outer pulsing rings (3 layers)
+                for ring in range(3):
+                    ring_radius = 60 - ring * 15 + int(math.sin(time * 3 + ring * 1.5) * 8)
+                    ring_alpha = int(40 - ring * 10 + math.sin(time * 4 + ring) * 20)
+                    ring_alpha = max(0, min(255, ring_alpha))  # Clamp to 0-255
+                    ring_width = 3 - ring
+                    
+                    # Create color with alpha
+                    r, g, b = glow_color
+                    ring_r = max(0, min(255, int(r * (0.8 + 0.2 * ring))))
+                    ring_g = max(0, min(255, int(g * (0.8 + 0.2 * ring))))
+                    ring_b = max(0, min(255, int(b * (0.8 + 0.2 * ring))))
+                    ring_color = (ring_r, ring_g, ring_b, ring_alpha)
+                    
+                    pygame.draw.circle(glow_surf, ring_color, glow_center, ring_radius, ring_width)
+                
+                # Inner bright glow (layered)
+                for layer in range(5, 0, -1):
+                    glow_radius = 35 + layer * 5
+                    glow_alpha = int(30 * (layer / 5) * item.get_glow_alpha() / 255)
+                    glow_alpha = max(0, min(255, glow_alpha))  # Clamp to 0-255
+                    inner_color = glow_color + (glow_alpha,)
+                    pygame.draw.circle(glow_surf, inner_color, glow_center, glow_radius)
+                
+                # === ENERGY WAVES (rotating) ===
+                wave_angle = time * 120  # Rotation speed
+                for wave in range(4):
+                    angle = math.radians(wave_angle + wave * 90)
+                    wave_radius = 45 + int(math.sin(time * 2 + wave) * 5)
+                    
+                    # Wave start and end points
+                    x1 = glow_center[0] + int(math.cos(angle) * wave_radius)
+                    y1 = glow_center[1] + int(math.sin(angle) * wave_radius)
+                    x2 = glow_center[0] + int(math.cos(angle + 0.3) * (wave_radius + 10))
+                    y2 = glow_center[1] + int(math.sin(angle + 0.3) * (wave_radius + 10))
+                    
+                    wave_alpha = int(100 + math.sin(time * 5 + wave) * 50)
+                    wave_alpha = max(0, min(255, wave_alpha))  # Clamp to 0-255
+                    r, g, b = glow_color
+                    wave_color = (min(255, r + 50), min(255, g + 50), min(255, b + 50), wave_alpha)
+                    pygame.draw.line(glow_surf, wave_color, (x1, y1), (x2, y2), 2)
+                
+                # === STAR SPARKLES (orbiting) ===
+                for star in range(8):
+                    star_angle = (time * 90 + star * 45) % 360
+                    star_orbit = 50 + int(math.sin(time * 3 + star) * 8)
+                    
+                    star_x = glow_center[0] + int(math.cos(math.radians(star_angle)) * star_orbit)
+                    star_y = glow_center[1] + int(math.sin(math.radians(star_angle)) * star_orbit)
+                    
+                    star_size = 2 + int(math.sin(time * 6 + star) * 1)
+                    star_alpha = int(150 + math.sin(time * 8 + star) * 105)
+                    star_alpha = max(0, min(255, star_alpha))  # Clamp to 0-255
+                    star_color = (255, 255, 255, star_alpha)
+                    
+                    pygame.draw.circle(glow_surf, star_color, (star_x, star_y), star_size)
+                
+                # Blit glow surface
+                self.screen.blit(glow_surf, (center_x - 100, center_y - 100))
+                
+                # === SPARKLE PARTICLES ===
+                for sparkle in item.sparkles:
+                    s_x = int(sparkle['x'] - camera_x)
+                    s_y = int(sparkle['y'] - camera_y)
+                    
+                    if 0 <= s_x < SCREEN_WIDTH and 0 <= s_y < SCREEN_HEIGHT:
+                        # Sparkle with glow
+                        sparkle_glow = pygame.Surface((12, 12), pygame.SRCALPHA)
+                        sparkle_alpha = max(0, min(255, sparkle['alpha']))
+                        
+                        # Outer glow
+                        for glow_layer in range(3, 0, -1):
+                            layer_alpha = max(0, min(255, sparkle_alpha // (4 - glow_layer)))
+                            layer_color = sparkle['color'] + (layer_alpha // 2,)
+                            pygame.draw.circle(sparkle_glow, layer_color, (6, 6), glow_layer)
+                        
+                        # Bright center
+                        center_color = (255, 255, 255, sparkle['alpha'])
+                        pygame.draw.circle(sparkle_glow, center_color, (6, 6), sparkle['size'])
+                        
+                        self.screen.blit(sparkle_glow, (s_x - 6, s_y - 6))
+            
+            # === RENDER ITEM TEXTURE ===
+            # Get rotation and scale
+            rotation = item.get_rotation()
+            scale = item.get_scale()
+            
+            # Apply rotation if needed
+            if rotation != 0 or scale != 1.0:
+                # Scale first
+                if scale != 1.0:
+                    new_width = int(item.width * scale)
+                    new_height = int(item.height * scale)
+                    scaled_texture = pygame.transform.scale(item.texture, (new_width, new_height))
+                else:
+                    scaled_texture = item.texture
+                
+                # Then rotate
+                if rotation != 0:
+                    rotated_texture = pygame.transform.rotate(scaled_texture, -rotation)
+                else:
+                    rotated_texture = scaled_texture
+                
+                # Center the texture
+                texture_rect = rotated_texture.get_rect(center=(screen_x + item.width // 2, 
+                                                                screen_y + item.height // 2))
+                self.screen.blit(rotated_texture, texture_rect)
+            else:
+                # No transformation needed
+                self.screen.blit(item.texture, (screen_x, screen_y))
+            
+            # === RARE ITEM OVERLAY GLOW ===
+            if item.is_rare:
+                # Pulsing bright edge
+                pulse_alpha = int(100 + math.sin(time * 5) * 80)
+                pulse_alpha = max(0, min(255, pulse_alpha))  # Clamp to 0-255
+                # Add bright highlight on item itself
+                highlight_surf = pygame.Surface((item.width + 8, item.height + 8), pygame.SRCALPHA)
+                
+                item_glow = glow_colors.get(item.item_type, (255, 255, 255))
+                r, g, b = item_glow
+                edge_color = (min(255, r + 100), min(255, g + 100), min(255, b + 100), pulse_alpha)
+                
+                pygame.draw.rect(highlight_surf, edge_color, highlight_surf.get_rect(), 2, border_radius=3)
+                
+                center_x = screen_x + item.width // 2
+                center_y = screen_y + item.height // 2
+                self.screen.blit(highlight_surf, (center_x - (item.width + 8) // 2, 
+                                                  center_y - (item.height + 8) // 2))
+            
+            # === NORMAL ITEM SIMPLE GLOW ===
+            elif item.item_type in ['diamond_pickaxe', 'iron_pickaxe']:
+                # Simple glow for valuable pickaxes
+                glow_surf = pygame.Surface((item.width + 20, item.height + 20), pygame.SRCALPHA)
+                glow_center = (item.width // 2 + 10, item.height // 2 + 10)
+                
+                simple_colors = {
+                    'diamond_pickaxe': (0, 255, 255),
+                    'iron_pickaxe': (200, 220, 255),
+                }
+                simple_glow = simple_colors.get(item.item_type, (255, 255, 255))
+                
+                for layer in range(3, 0, -1):
+                    layer_alpha = 20 * layer
+                    layer_color = simple_glow + (layer_alpha,)
+                    pygame.draw.circle(glow_surf, layer_color, glow_center, 15 + layer * 3)
+                
+                self.screen.blit(glow_surf, (screen_x - 10, screen_y - 10))
+                self.screen.blit(item.texture, (screen_x, screen_y))
 

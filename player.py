@@ -58,6 +58,23 @@ class Player:
         # Death/respawn flag
         self.fell_to_bedrock = False
         
+        # Mining level system
+        self.mining_level = 0
+        self.mining_speed_bonus = 0.0  # Percentage bonus (0.0 to 2.0 = 0% to 200%)
+        self.level_up_flash = 0  # Visual feedback timer
+        
+        # Health system
+        self.max_hp = 3
+        self.current_hp = 3
+        self.hp_regen_timer = 0
+        self.hp_regen_delay = 5.0  # Regen after 5 seconds without damage
+        self.last_damage_time = 0
+        self.death_flash = 0
+        
+        # TNT upgrade system
+        self.tnt_power_level = 0  # Each level increases TNT damage/radius
+        self.tnt_power_bonus = 0.0  # Percentage bonus (10% per level)
+        
         # Generate player texture
         self.textures = self._generate_textures()
         
@@ -702,6 +719,32 @@ class Player:
             if self.knockback_resistance < 0:
                 self.knockback_resistance = 0
         
+        # Update level up flash effect
+        if self.level_up_flash > 0:
+            self.level_up_flash -= dt
+            if self.level_up_flash < 0:
+                self.level_up_flash = 0
+        
+        # Calculate mining speed bonus from level (10% per level, max 200%)
+        old_bonus = self.mining_speed_bonus
+        self.mining_speed_bonus = min(2.0, self.mining_level * 0.10)
+        if old_bonus != self.mining_speed_bonus:
+            print(f"[DEBUG] Mining bonus updated: Level={self.mining_level}, Bonus={self.mining_speed_bonus:.2f} ({int(self.mining_speed_bonus*100)}%)")
+        
+        # Calculate TNT power bonus (10% per level)
+        self.tnt_power_bonus = self.tnt_power_level * 0.10
+        
+        # HP regeneration (heal 1 HP every 5 seconds if not damaged)
+        self.last_damage_time += dt
+        if self.last_damage_time >= self.hp_regen_delay and self.current_hp < self.max_hp:
+            self.current_hp += 1
+            self.last_damage_time = 0
+            print(f"[HP] HP Regenerated! Current HP: {self.current_hp}/{self.max_hp}")
+        
+        # Update death flash
+        if self.death_flash > 0:
+            self.death_flash -= dt
+        
         # Update hurt state
         if self.hurt_timer > 0:
             self.hurt_timer -= dt
@@ -810,9 +853,13 @@ class Player:
             block = world.get_block(bx, foot_y)
             if block and block.is_mineable():
                 self.is_mining = True
-                damage = AUTO_DIG_DAMAGE * dt
+                # Apply mining speed bonus from level
+                speed_multiplier = 1.0 + self.mining_speed_bonus
+                base_damage = AUTO_DIG_DAMAGE * dt
+                damage = base_damage * speed_multiplier
                 if world.mine_block_at(bx, foot_y, damage):
                     # Block was destroyed
+                    print(f"[DEBUG] Block broken! Base dmg={base_damage:.2f}, Multiplier={speed_multiplier:.2f}x, Final={damage:.2f}")
                     pass
     
     def _update_animation(self, dt):
@@ -923,6 +970,22 @@ class Player:
         
         # Add temporary resistance (prevents multiple TNT from launching player)
         self.knockback_resistance = min(0.8, self.knockback_resistance + 0.3)
+        
+        # Take HP damage from explosion
+        self.current_hp -= 1
+        self.last_damage_time = 0  # Reset regen timer
+        print(f"[HP] HP Lost! Current HP: {self.current_hp}/{self.max_hp}")
+        
+        # Check for death
+        if self.current_hp <= 0:
+            self.current_hp = 0
+            self.death_flash = 1.0
+            if self.mining_level > 0:
+                print(f"[DEATH] Lost all progress - Level {self.mining_level} reset!")
+                self.mining_level = 0
+                self.mining_speed_bonus = 0.0
+            # Respawn with 1 HP
+            self.current_hp = 1
     
     def get_texture(self, debug=False):
         """Get current animation texture"""
