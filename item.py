@@ -38,6 +38,9 @@ class Item:
         self.lifetime = 10.0
         self.lifetime_warning = False  # Flash when about to expire
         
+        # Collection delay - items can't be collected for 1.5 seconds after spawn
+        self.collection_delay = 1.5
+        
         # Generate texture
         self.texture = self._generate_texture()
     
@@ -381,6 +384,10 @@ class Item:
         """Update item physics and animation"""
         self.spawn_timer += dt
         
+        # Update collection delay
+        if self.collection_delay > 0:
+            self.collection_delay -= dt
+        
         # Update lifetime
         self.lifetime -= dt
         if self.lifetime <= 2.0 and not self.lifetime_warning:
@@ -447,6 +454,10 @@ class Item:
     
     def can_collect(self, player):
         """Check if player is close enough to collect"""
+        # Can't collect during delay period
+        if self.collection_delay > 0:
+            return False
+        
         # Collection radius
         collect_radius = BLOCK_SIZE * 1.5
         

@@ -23,8 +23,8 @@ class AIBot:
         
         # Behavior settings
         self.danger_radius = 100  # Distance to flee from TNT
-        self.collect_radius = 150  # Distance to detect items
-        self.mine_depth_target = 20  # How deep to mine
+        self.collect_radius = 250  # Distance to detect items (increased)
+        self.mine_depth_target = 50  # How deep to mine (increased for more exploration)
         
     def update(self, dt):
         """Update AI decision making and control player"""
@@ -106,9 +106,20 @@ class AIBot:
             # Don't jump while mining - stay still
             self.try_mine_down()
         elif self.state == 'collect':
-            # Jump only if item is above and far enough
-            if dy < -30 and self.player.on_ground and abs(dx) < 50:
-                self.player.jump()
+            # Actively move towards item
+            if abs(dx) > 5:
+                # Keep moving towards item
+                if dx > 0:
+                    self.player.move_direction = 1
+                else:
+                    self.player.move_direction = -1
+            
+            # Jump if item is above or if there's an obstacle
+            if self.player.on_ground:
+                if dy < -20:  # Item is above
+                    self.player.jump()
+                elif self.is_obstacle_ahead():
+                    self.player.jump()
         elif self.state == 'explore':
             # Jump over obstacles only, not randomly
             if self.is_obstacle_ahead() and self.player.on_ground:
