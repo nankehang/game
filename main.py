@@ -32,6 +32,10 @@ class Game:
         self.flash_alpha = 0
         self.flash_color = (255, 255, 255)
         
+        # Death/respawn system
+        self.death_timer = 0
+        self.is_waiting_respawn = False
+        
         # Debug mode
         self.debug_mode = True  # Start with debug ON
         
@@ -49,8 +53,8 @@ class Game:
                     # Jump
                     self.player.jump()
                 elif event.key == pygame.K_t:
-                    # Drop TNT at player position
-                    self.world.spawn_tnt(self.player.x, self.player.y, fuse_time=2.0)
+                    # Drop TNT at player position (with player's power level)
+                    self.world.spawn_tnt(self.player.x, self.player.y, fuse_time=2.0, power_level=self.player.tnt_power_level)
                 elif event.key == pygame.K_r:
                     # Reset player position (respawn)
                     self.respawn_player()
@@ -104,6 +108,20 @@ class Game:
         # Update player
         self.player.update(dt, self.world)
         
+        # Check if player died (HP = 0)
+        if self.player.current_hp <= 0 and not self.is_waiting_respawn:
+            print("[GAME] Player died! Respawning in 3 seconds...")
+            self.is_waiting_respawn = True
+            self.death_timer = 3.0  # 3 second countdown
+        
+        # Update death timer
+        if self.is_waiting_respawn:
+            self.death_timer -= dt
+            if self.death_timer <= 0:
+                self.respawn_player()
+                self.is_waiting_respawn = False
+                self.death_timer = 0
+        
         # Check if player hit bedrock or fell out of world
         if self.player.fell_to_bedrock:
             print("[GAME] Player reached bedrock! Respawning at surface...")
@@ -135,10 +153,20 @@ class Game:
         
     def render(self):
         """Render everything to screen"""
-        self.screen.fill(SKY_COLOR)
+        # Check if player is in Nether (below bedrock)
+        player_depth_y = int(self.player.y // BLOCK_SIZE)
+        in_nether = player_depth_y > BEDROCK_START
         
-        # Render twinkling stars (background)
-        self.renderer.render_stars()
+        # Change sky color based on dimension
+        if in_nether:
+            nether_sky = (60, 20, 20)  # Dark red for Nether
+            self.screen.fill(nether_sky)
+        else:
+            self.screen.fill(SKY_COLOR)
+        
+        # Render twinkling stars (background) - only in overworld
+        if not in_nether:
+            self.renderer.render_stars()
         
         # Apply screen shake to camera
         shake_x = 0
@@ -183,6 +211,28 @@ class Game:
             death_surface.set_alpha(int(self.player.death_flash * 150))
             self.screen.blit(death_surface, (0, 0))
         
+        # Death screen with countdown
+        if self.is_waiting_respawn:
+            # Dark overlay
+            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            overlay.fill((0, 0, 0))
+            overlay.set_alpha(180)
+            self.screen.blit(overlay, (0, 0))
+            
+            # Death message
+            font_huge = pygame.font.Font(None, 72)
+            font_large = pygame.font.Font(None, 48)
+            
+            death_text = font_huge.render("YOU DIED", True, (255, 50, 50))
+            death_rect = death_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 50))
+            self.screen.blit(death_text, death_rect)
+            
+            # Countdown
+            countdown = int(self.death_timer) + 1
+            countdown_text = font_large.render(f"Respawning in {countdown}...", True, (255, 200, 200))
+            countdown_rect = countdown_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30))
+            self.screen.blit(countdown_text, countdown_rect)
+        
         # Render UI
         self.render_ui()
         
@@ -195,7 +245,28 @@ class Game:
         
         # Depth indicator
         depth = max(0, (self.player.y // BLOCK_SIZE) - 10)
-        depth_text = font.render(f"Depth: {depth}m", True, (255, 255, 255))
+        
+        # Check dimension
+        player_block_y = int(self.player.y // BLOCK_SIZE)
+        if player_block_y > BEDROCK_START:
+            dimension_text = font_large.render("THE NETHER", True, (255, 100, 50))
+            dim_rect = dimension_text.get_rect(center=(SCREEN_WIDTH // 2, 15))
+            
+            # Pulsing glow effect
+            import math
+            pulse = abs(math.sin(pygame.time.get_ticks() / 300))
+            glow_surf = font_large.render("THE NETHER", True, (255, 150, 100))
+            glow_surf.set_alpha(int(150 * pulse))
+            glow_rect = glow_surf.get_rect(center=(SCREEN_WIDTH // 2, 15))
+            self.screen.blit(glow_surf, glow_rect)
+            self.screen.blit(dimension_text, dim_rect)
+            
+            # Nether depth
+            nether_depth = player_block_y - BEDROCK_START
+            depth_text = font.render(f"Nether Depth: {nether_depth}m", True, (255, 150, 100))
+        else:
+            depth_text = font.render(f"Depth: {depth}m", True, (255, 255, 255))
+        
         self.screen.blit(depth_text, (10, 10))
         
         # Mining Level Display (with glow effect)
@@ -288,8 +359,14 @@ class Game:
     
     def respawn_player(self):
         """Respawn player at surface safely"""
-        # Find safe spawn position (grass layer)
-        spawn_x = SCREEN_WIDTH // 2
+        import random
+        
+        # Find random safe spawn position (grass layer)
+        # Spawn somewhere in the middle 60% of the world (avoid edges)
+        world_width_blocks = self.world.width * BLOCK_SIZE
+        min_x = world_width_blocks * 0.2
+        max_x = world_width_blocks * 0.8
+        spawn_x = random.uniform(min_x, max_x)
         spawn_y = (GRASS_LAYER - 2) * BLOCK_SIZE  # Above grass layer
         
         self.player.x = spawn_x
@@ -304,6 +381,11 @@ class Game:
         self.player.hurt_timer = 0
         self.player.control_locked = False
         self.player.fell_to_bedrock = False  # Reset bedrock flag
+        self.player.death_flash = 0
+        
+        # Give HP on respawn (half of max HP, minimum 2)
+        self.player.current_hp = max(2, self.player.max_hp // 2)
+        print(f"[RESPAWN] Respawned at random location ({int(spawn_x/BLOCK_SIZE)}, {int(spawn_y/BLOCK_SIZE)}) with {self.player.current_hp}/{self.player.max_hp} HP")
             
     def run(self):
         """Main game loop"""

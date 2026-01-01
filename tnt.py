@@ -10,11 +10,15 @@ from constants import *
 class TNT:
     """TNT block that falls and explodes"""
     
-    def __init__(self, x, y, fuse_time=None):
+    def __init__(self, x, y, fuse_time=None, power_level=0):
         self.x = x
         self.y = y
-        self.width = BLOCK_SIZE
-        self.height = BLOCK_SIZE
+        self.power_level = power_level  # TNT power level from player
+        
+        # Size increases with power level
+        size_multiplier = 1.0 + (power_level * 0.15)  # +15% per level
+        self.width = int(BLOCK_SIZE * size_multiplier)
+        self.height = int(BLOCK_SIZE * size_multiplier)
         
         # Physics
         self.velocity_y = 0

@@ -9,8 +9,8 @@ FPS = 60
 
 # Block settings
 BLOCK_SIZE = 16
-CHUNK_WIDTH = 100
-WORLD_HEIGHT = 500
+CHUNK_WIDTH = 300  # Increased from 100 (3x wider)
+WORLD_HEIGHT = 800  # Increased from 500 (deeper for Nether)
 
 # Colors
 SKY_COLOR = (15, 15, 40)  # Dark night sky
@@ -49,7 +49,17 @@ BLOCK_COLORS = {
     'bedrock': (32, 32, 32),
     'water': (63, 118, 228),
     'lava': (255, 69, 0),
-    'tnt': (255, 0, 0)
+    'tnt': (255, 0, 0),
+    # Nether blocks
+    'netherrack': (100, 40, 40),
+    'soul_sand': (80, 60, 50),
+    'nether_brick': (60, 20, 30),
+    'glowstone': (255, 200, 100),
+    'nether_quartz': (230, 225, 220),
+    # Ocean blocks
+    'sand': (230, 220, 170),
+    'sandstone': (200, 180, 130),
+    'ocean_stone': (100, 140, 180),
 }
 
 # Block properties
@@ -66,16 +76,26 @@ BLOCK_HARDNESS = {
     'bedrock': float('inf'),
     'water': 0.1,
     'lava': 0.1,
-    'tnt': 1.0
+    'tnt': 1.0,
+    # Nether blocks
+    'netherrack': 0.8,
+    'soul_sand': 1.0,
+    'nether_brick': 3.0,
+    'glowstone': 0.5,
+    'nether_quartz': 4.0,
+    # Ocean blocks
+    'sand': 0.5,
+    'sandstone': 1.5,
+    'ocean_stone': 2.5,
 }
 
 # Ore spawn rates (chance per block at appropriate depth)
 ORE_SPAWN_RATES = {
-    'coal': 0.02,      # 2% at depth 20+
-    'iron': 0.01,      # 1% at depth 40+
-    'gold': 0.005,     # 0.5% at depth 80+
-    'diamond': 0.002,  # 0.2% at depth 120+
-    'mythic_ore': 0.0005  # 0.05% at depth 200+
+    'coal': 0.15,      # 15% at depth 10+ (very common)
+    'iron': 0.10,      # 10% at depth 20+ (common)
+    'gold': 0.06,      # 6% at depth 40+ (uncommon)
+    'diamond': 0.03,   # 3% at depth 60+ (rare)
+    'mythic_ore': 0.005  # 0.5% at depth 100+ (very rare)
 }
 
 # Layer depths

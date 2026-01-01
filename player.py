@@ -984,8 +984,9 @@ class Player:
                 print(f"[DEATH] Lost all progress - Level {self.mining_level} reset!")
                 self.mining_level = 0
                 self.mining_speed_bonus = 0.0
-            # Respawn with 1 HP
-            self.current_hp = 1
+                self.tnt_power_level = 0
+                self.tnt_power_bonus = 0.0
+            # Player will be respawned by game system
     
     def get_texture(self, debug=False):
         """Get current animation texture"""

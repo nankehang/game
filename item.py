@@ -32,7 +32,7 @@ class Item:
         self.scale_pulse = 1.0
         
         # Rare items have special effects
-        self.is_rare = item_type in ['magnet', 'double_jump', 'speed_boost', 'shield', 'block_breaker', 'crystal', 'rare_ore', 'heart']
+        self.is_rare = item_type in ['magnet', 'double_jump', 'speed_boost', 'shield', 'block_breaker', 'crystal', 'rare_ore', 'heart', 'coal_ore', 'iron_ore', 'gold_ore', 'diamond_ore']
         
         # Lifetime - items disappear after 10 seconds
         self.lifetime = 10.0
@@ -127,6 +127,33 @@ class Item:
             highlight_color = (255, 150, 200)
             has_glow = True
             glow_color = (255, 100, 150)
+        elif self.item_type == 'coal_ore':
+            # Black coal
+            handle_color = (50, 50, 50)
+            head_color = (30, 30, 30)
+            highlight_color = (80, 80, 80)
+            has_glow = False
+        elif self.item_type == 'iron_ore':
+            # Gray iron
+            handle_color = (192, 192, 192)
+            head_color = (150, 150, 150)
+            highlight_color = (220, 220, 220)
+            has_glow = True
+            glow_color = (200, 200, 200)
+        elif self.item_type == 'gold_ore':
+            # Golden
+            handle_color = (255, 215, 0)
+            head_color = (218, 165, 32)
+            highlight_color = (255, 235, 100)
+            has_glow = True
+            glow_color = (255, 215, 0)
+        elif self.item_type == 'diamond_ore':
+            # Cyan diamond
+            handle_color = (0, 255, 255)
+            head_color = (0, 200, 255)
+            highlight_color = (100, 255, 255)
+            has_glow = True
+            glow_color = (0, 255, 255)
         else:  # Default wood
             handle_color = (139, 90, 43)
             head_color = (101, 67, 33)
@@ -134,7 +161,7 @@ class Item:
             has_glow = False
         
         # Generate texture based on item type
-        if self.item_type in ['crystal', 'rare_ore', 'heart']:
+        if self.item_type in ['crystal', 'rare_ore', 'heart', 'coal_ore', 'iron_ore', 'gold_ore', 'diamond_ore']:
             self._draw_gem(surface, handle_color, head_color, highlight_color, has_glow, glow_color)
         elif self.item_type in ['magnet', 'double_jump', 'speed_boost', 'shield', 'block_breaker']:
             self._draw_rare_item(surface, handle_color, head_color, highlight_color, has_glow, glow_color)
@@ -445,6 +472,10 @@ class Item:
             'diamond_pickaxe': (0, 255, 255),
             'iron_pickaxe': (200, 220, 255),
             'heart': (255, 100, 150),
+            'coal_ore': (50, 50, 50),
+            'iron_ore': (192, 192, 192),
+            'gold_ore': (255, 215, 0),
+            'diamond_ore': (0, 255, 255),
         }
         
         color = colors.get(self.item_type, (255, 255, 255))

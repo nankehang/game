@@ -228,15 +228,29 @@ class Renderer:
         screen_x = int(tnt.x - camera_x)
         screen_y = int(tnt.y - camera_y)
         
-        # Get TNT texture
-        texture = texture_gen.generate_block_texture('tnt')
-        texture = texture.copy()  # Make copy for modification
+        # Get TNT texture based on power level
+        if tnt.power_level >= 5:
+            base_texture = texture_gen.generate_block_texture('mythic_tnt')  # Purple/pink for high level
+        elif tnt.power_level >= 2:
+            base_texture = texture_gen.generate_block_texture('super_tnt')  # Purple for level 2+
+        else:
+            base_texture = texture_gen.generate_block_texture('tnt')  # Normal red
+        
+        # Scale texture if TNT is bigger
+        if tnt.width != BLOCK_SIZE:
+            texture = pygame.transform.scale(base_texture, (tnt.width, tnt.height))
+        else:
+            texture = base_texture.copy()
         
         # Red flash effect when close to explosion
         if tnt.should_flash():
             if int(tnt.fuse_time * 8) % 2 == 0:  # Faster flash
-                flash_surface = pygame.Surface((BLOCK_SIZE, BLOCK_SIZE))
-                flash_surface.fill((255, 0, 0))  # Red flash
+                flash_surface = pygame.Surface((tnt.width, tnt.height))
+                # Flash color based on power level
+                if tnt.power_level >= 2:
+                    flash_surface.fill((200, 0, 255))  # Purple flash
+                else:
+                    flash_surface.fill((255, 0, 0))  # Red flash
                 flash_surface.set_alpha(150)
                 texture.blit(flash_surface, (0, 0))
         
@@ -253,8 +267,16 @@ class Renderer:
         else:
             color = (255, 255, 0)  # Yellow - safe
         
-        fuse_text = font.render(f"{tnt.fuse_time:.1f}s", True, color)
-        text_rect = fuse_text.get_rect(center=(screen_x + BLOCK_SIZE // 2, 
+        # Show power level if > 0
+        if tnt.power_level > 0:
+            timer_text = f"Lv.{tnt.power_level} {tnt.fuse_time:.1f}s"
+            power_color = (200, 100, 255) if tnt.power_level >= 2 else (255, 200, 0)
+        else:
+            timer_text = f"{tnt.fuse_time:.1f}s"
+            power_color = color
+        
+        fuse_text = font.render(timer_text, True, power_color)
+        text_rect = fuse_text.get_rect(center=(screen_x + tnt.width // 2, 
                                                 screen_y - 10))
         # Draw background for better visibility
         bg_rect = text_rect.inflate(4, 2)
@@ -591,6 +613,10 @@ class Renderer:
                     'rare_ore': (180, 100, 220),
                     'diamond_pickaxe': (0, 255, 255),
                     'heart': (255, 100, 150),
+                    'coal_ore': (80, 80, 80),
+                    'iron_ore': (192, 192, 192),
+                    'gold_ore': (255, 215, 0),
+                    'diamond_ore': (0, 255, 255),
                 }
                 glow_color = glow_colors.get(item.item_type, (255, 255, 255))
                 

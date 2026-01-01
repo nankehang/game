@@ -67,42 +67,94 @@ class World:
         print(f"World generated: {self.width}x{self.height} blocks")
     
     def _determine_block_type(self, x, y):
-        """Determine block type based on position and randomness"""
+        """Determine block type based on position, randomness, and biome"""
+        # Determine biome based on X position
+        biome = self._get_biome(x)
+        
         # Sky
         if y < GRASS_LAYER:
             return 'air'
         
-        # Grass layer
+        # Grass layer (varies by biome)
         if y == GRASS_LAYER:
-            return 'grass'
+            if biome == 'ocean':
+                return 'water'
+            else:
+                return 'grass'
         
-        # Dirt layer
+        # Dirt/sand layer (varies by biome)
         if y < DIRT_LAYER:
-            return 'dirt'
+            if biome == 'ocean':
+                return 'sand'
+            else:
+                return 'dirt'
         
-        # Bedrock at bottom
-        if y >= BEDROCK_START:
+        # First bedrock layer (portal to Nether)
+        if y == BEDROCK_START:
             return 'bedrock'
         
-        # Stone layer with ores
+        # NETHER DIMENSION (below bedrock)
+        if y > BEDROCK_START:
+            return self._determine_nether_block(x, y)
+        
+        # Stone layer with ores (above bedrock)
         depth = y - STONE_START
         
-        # Check for ore generation
-        rand = random.random()
-        
-        if depth > 180 and rand < ORE_SPAWN_RATES['mythic_ore']:
+        # Check for ore generation (each ore gets its own random check)
+        # Check rarest ores first
+        if depth > 100 and random.random() < ORE_SPAWN_RATES['mythic_ore']:
             return 'mythic_ore'
-        if depth > 100 and rand < ORE_SPAWN_RATES['diamond']:
+        if depth > 60 and random.random() < ORE_SPAWN_RATES['diamond']:
             return 'diamond'
-        if depth > 60 and rand < ORE_SPAWN_RATES['gold']:
+        if depth > 40 and random.random() < ORE_SPAWN_RATES['gold']:
             return 'gold'
-        if depth > 20 and rand < ORE_SPAWN_RATES['iron']:
+        if depth > 20 and random.random() < ORE_SPAWN_RATES['iron']:
             return 'iron'
-        if depth > 0 and rand < ORE_SPAWN_RATES['coal']:
+        if depth > 10 and random.random() < ORE_SPAWN_RATES['coal']:
             return 'coal'
         
-        # Default to stone
-        return 'stone'
+        # Default to stone or biome-specific stone
+        if biome == 'ocean':
+            return 'ocean_stone'
+        else:
+            return 'stone'
+    
+    def _get_biome(self, x):
+        """Determine biome based on X position"""
+        # Divide world into biomes
+        biome_size = self.width // 4
+        
+        if x < biome_size:
+            return 'ocean'  # Left side is ocean
+        elif x < biome_size * 2:
+            return 'normal'  # Normal terrain
+        elif x < biome_size * 3:
+            return 'normal'  # Normal terrain
+        else:
+            return 'desert'  # Right side could be desert (future)
+    
+    def _determine_nether_block(self, x, y):
+        """Determine block type in the Nether dimension"""
+        nether_depth = y - BEDROCK_START
+        
+        # Glowstone clusters (rare, near top)
+        if nether_depth < 10 and random.random() < 0.03:
+            return 'glowstone'
+        
+        # Nether quartz ore
+        if random.random() < 0.08:
+            return 'nether_quartz'
+        
+        # Soul sand patches
+        if random.random() < 0.15:
+            return 'soul_sand'
+        
+        # Nether brick structures
+        if random.random() < 0.05:
+            return 'nether_brick'
+        
+        # Default: Netherrack
+        return 'netherrack'
     
     def get_block(self, x, y):
         """Get block at grid position"""
@@ -135,6 +187,14 @@ class World:
             # Block destroyed - create particles
             self._create_break_particles(x, y, block.type)
             
+            # Drop items from ore blocks
+            if block.type in ['coal', 'iron', 'gold', 'diamond']:
+                # Spawn ore item at block location
+                item_x = x * BLOCK_SIZE + BLOCK_SIZE // 2
+                item_y = y * BLOCK_SIZE
+                self.spawn_item(item_x, item_y, block.type + '_ore')
+                print(f"[ORE DROP] {block.type} ore dropped!")
+            
             # Play break sound
             if SOUND_ENABLED:
                 sound_gen.play_block_break()
@@ -158,7 +218,7 @@ class World:
             particle = Particle(world_x, world_y, color)
             self.particles.append(particle)
     
-    def spawn_tnt(self, x, y, fuse_time=None):
+    def spawn_tnt(self, x, y, fuse_time=None, power_level=0):
         """Spawn TNT at world position"""
         grid_x = int(x // BLOCK_SIZE)
         grid_y = int(y // BLOCK_SIZE)
@@ -167,9 +227,9 @@ class World:
         if self.get_block(grid_x, grid_y):
             return  # Can't spawn in solid block
         
-        tnt = TNT(x, y, fuse_time)
+        tnt = TNT(x, y, fuse_time, power_level)
         self.tnt_list.append(tnt)
-        print(f"[TNT] Spawned at ({grid_x}, {grid_y}) with {tnt.fuse_time:.1f}s fuse")
+        print(f"[TNT] Spawned at ({grid_x}, {grid_y}) with {tnt.fuse_time:.1f}s fuse, Power Level: {power_level}")
     
     def spawn_item(self, x, y, item_type):
         """Spawn collectible item at world position"""
@@ -300,19 +360,34 @@ class World:
                         self.set_block(bx, by, 'air')
                         destroyed_count += 1
         
-        # Create explosion particles
-        for _ in range(30):
-            particle = Particle(tnt.x, tnt.y, (255, 100, 0))
-            particle.velocity_x = random.uniform(-200, 200)
-            particle.velocity_y = random.uniform(-200, 200)
-            particle.lifetime = 1.0
+        # Create colored explosion particles based on TNT power level
+        if tnt.power_level >= 5:
+            particle_colors = [(255, 100, 255), (200, 0, 255), (255, 0, 200)]  # Pink/Purple
+        elif tnt.power_level >= 2:
+            particle_colors = [(150, 0, 255), (200, 50, 255), (100, 0, 200)]  # Purple
+        else:
+            particle_colors = [(255, 100, 0), (255, 150, 0), (255, 200, 0)]  # Orange/Yellow
+        
+        # Particle count increases with power level
+        particle_count = 30 + (tnt.power_level * 10)
+        for _ in range(particle_count):
+            color = particle_colors[_ % len(particle_colors)]
+            particle = Particle(tnt.x, tnt.y, color)
+            particle.velocity_x = random.uniform(-200, 200) * (1 + tnt.power_level * 0.2)
+            particle.velocity_y = random.uniform(-200, 200) * (1 + tnt.power_level * 0.2)
+            particle.lifetime = 1.0 + (tnt.power_level * 0.2)
             self.particles.append(particle)
         
         print(f"Explosion destroyed {destroyed_count} blocks")
         
+        # Trigger screen effects if game reference provided
+        if game:
+            game.explosion_flash = 0.5
+            game.screen_shake = 10 * (1 + tnt.power_level * 0.3)
+        
         # RARE ITEM DROPS from TNT! 
         drop_chance = random.random()
-        if drop_chance < 0.3:  # 30% chance to drop rare item
+        if drop_chance < 0.10:  # 10% chance to drop rare item (reduced from 30%)
             rare_items = ['magnet', 'double_jump', 'speed_boost', 'shield', 'block_breaker']
             item_type = random.choice(rare_items)
             
@@ -331,8 +406,8 @@ class World:
                 particle.lifetime = 0.8
                 self.particles.append(particle)
         
-        # 15% chance to drop heart item
-        elif drop_chance < 0.45:
+        # 5% chance to drop heart item (reduced from 15%)
+        elif drop_chance < 0.15:
             item_x = tnt.x + random.uniform(-BLOCK_SIZE, BLOCK_SIZE)
             item_y = tnt.y - BLOCK_SIZE * 2
             self.spawn_item(item_x, item_y, 'heart')
@@ -408,6 +483,11 @@ class World:
                     player.max_hp += 1
                     player.current_hp += 1  # Also heal
                     print(f"[HEART] +1 Max HP! Total: {player.max_hp}")
+                
+                # Ore items (coal, iron, gold, diamond) - just collect for score
+                elif item.item_type in ['coal_ore', 'iron_ore', 'gold_ore', 'diamond_ore']:
+                    ore_name = item.item_type.replace('_ore', '').upper()
+                    print(f"[COLLECT] {ore_name} collected!")
                 
                 # Crystal and rare ore upgrade TNT power
                 elif item.item_type in ['crystal', 'rare_ore']:

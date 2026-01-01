@@ -46,6 +46,10 @@ class TextureGenerator:
             self._generate_bedrock_texture(surface, base_color)
         elif block_type == 'tnt':
             self._generate_tnt_texture(surface, base_color)
+        elif block_type == 'super_tnt':
+            self._generate_super_tnt_texture(surface, base_color)
+        elif block_type == 'mythic_tnt':
+            self._generate_mythic_tnt_texture(surface, base_color)
         else:
             self._generate_basic_texture(surface, base_color)
         
@@ -238,6 +242,62 @@ class TextureGenerator:
         center_pixels = [(7, 6), (8, 6), (7, 7), (7, 8), (7, 9)]
         for px, py in center_pixels:
             surface.set_at((px, py), (0, 0, 0))
+    
+    def _generate_super_tnt_texture(self, surface, base_color):
+        """Generate purple Super TNT texture"""
+        for y in range(BLOCK_SIZE):
+            for x in range(BLOCK_SIZE):
+                # Create striped pattern with purple
+                if (x + y) % 4 < 2:
+                    # Purple stripes
+                    noise = random.randint(-10, 10)
+                    pixel_color = (
+                        max(0, min(255, 150 + noise)),
+                        max(0, min(255, 0 + noise)),
+                        max(0, min(255, 255 + noise))
+                    )
+                else:
+                    # Light purple stripes
+                    noise = random.randint(-10, 10)
+                    pixel_color = (
+                        max(0, min(255, 200 + noise)),
+                        max(0, min(255, 150 + noise)),
+                        max(0, min(255, 255 + noise))
+                    )
+                surface.set_at((x, y), pixel_color)
+        
+        # Add "TNT" text in center
+        center_pixels = [(7, 6), (8, 6), (7, 7), (7, 8), (7, 9)]
+        for px, py in center_pixels:
+            surface.set_at((px, py), (0, 0, 0))
+    
+    def _generate_mythic_tnt_texture(self, surface, base_color):
+        """Generate pink/purple Mythic TNT texture"""
+        for y in range(BLOCK_SIZE):
+            for x in range(BLOCK_SIZE):
+                # Create striped pattern with pink/purple
+                if (x + y) % 4 < 2:
+                    # Pink stripes
+                    noise = random.randint(-10, 10)
+                    pixel_color = (
+                        max(0, min(255, 255 + noise)),
+                        max(0, min(255, 100 + noise)),
+                        max(0, min(255, 255 + noise))
+                    )
+                else:
+                    # Purple stripes
+                    noise = random.randint(-10, 10)
+                    pixel_color = (
+                        max(0, min(255, 200 + noise)),
+                        max(0, min(255, 0 + noise)),
+                        max(0, min(255, 255 + noise))
+                    )
+                surface.set_at((x, y), pixel_color)
+        
+        # Add "TNT" text in center with glow effect
+        center_pixels = [(7, 6), (8, 6), (7, 7), (7, 8), (7, 9)]
+        for px, py in center_pixels:
+            surface.set_at((px, py), (255, 255, 0))  # Yellow text
 
 # Global texture generator instance
 texture_gen = TextureGenerator()
