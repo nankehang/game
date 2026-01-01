@@ -8,6 +8,8 @@ from block import Block
 from tnt import TNT
 from particle import Particle
 from explosion import Explosion
+from item import Item
+from meteor import Meteor
 from sound_generator import sound_gen, SOUND_ENABLED
 from constants import *
 
@@ -21,14 +23,36 @@ class World:
         self.tnt_list = []
         self.particles = []
         self.explosions = []  # Explosion animations
+        self.items = []  # Collectible items
+        self.meteors = []  # Meteor shower
         
         # TNT spawning system
         self.tnt_spawn_timer = 0
         self.tnt_spawn_interval = TNT_SPAWN_INTERVAL
         self.total_tnt_spawned = 0
         
+        # Meteor shower system (rare event)
+        self.meteor_shower_timer = 0
+        self.meteor_shower_interval = random.uniform(40, 60)  # Every 40-60 seconds
+        self.meteor_shower_active = False
+        self.meteor_shower_duration = 0
+        self.meteor_spawn_timer = 0
+        
         # Generate initial world
         self._generate_world()
+        
+        # Spawn test pickaxes (for demonstration)
+        self._spawn_test_items()
+    
+    def _spawn_test_items(self):
+        """Spawn some pickaxes for testing"""
+        # Spawn one of each type near spawn
+        spawn_y = (GRASS_LAYER + 1) * BLOCK_SIZE
+        
+        self.spawn_item(5 * BLOCK_SIZE, spawn_y, 'wood_pickaxe')
+        self.spawn_item(8 * BLOCK_SIZE, spawn_y, 'stone_pickaxe')
+        self.spawn_item(11 * BLOCK_SIZE, spawn_y, 'iron_pickaxe')
+        self.spawn_item(14 * BLOCK_SIZE, spawn_y, 'diamond_pickaxe')
     
     def _generate_world(self):
         """Generate procedural world layers"""
@@ -146,6 +170,12 @@ class World:
         tnt = TNT(x, y, fuse_time)
         self.tnt_list.append(tnt)
         print(f"[TNT] Spawned at ({grid_x}, {grid_y}) with {tnt.fuse_time:.1f}s fuse")
+    
+    def spawn_item(self, x, y, item_type):
+        """Spawn collectible item at world position"""
+        item = Item(x, y, item_type)
+        self.items.append(item)
+        print(f"[ITEM] Spawned {item_type} at ({int(x)}, {int(y)})")
     
     def spawn_random_tnt_from_top(self, player_depth):
         """Spawn TNT from random position at top of screen"""
@@ -286,6 +316,9 @@ class World:
     
     def update(self, dt, player=None, game=None):
         """Update TNT and particles"""
+        # Update meteor shower system
+        self._update_meteor_shower(dt)
+        
         # Update TNT spawn timer
         self.tnt_spawn_timer += dt
         if self.tnt_spawn_timer >= self.tnt_spawn_interval:
@@ -317,6 +350,24 @@ class World:
             explosion.update(dt)
             if explosion.is_finished():
                 self.explosions.remove(explosion)
+        
+        # Update items
+        for item in self.items[:]:
+            item.update(dt, self)
+            
+            # Check if player collects item
+            if player and item.can_collect(player):
+                print(f"[ITEM] Player collected {item.item_type}!")
+                self.items.remove(item)
+        
+        # Update meteors
+        for meteor in self.meteors[:]:
+            meteor.update(dt)
+            
+            # Check if meteor should impact
+            if meteor.should_impact(self):
+                self._meteor_impact(meteor)
+                self.meteors.remove(meteor)
     
     def get_visible_blocks(self, camera_x, camera_y, screen_width, screen_height):
         """Get blocks visible on screen for efficient rendering"""
@@ -333,3 +384,87 @@ class World:
                     visible.append((x, y, block))
         
         return visible
+
+    def _update_meteor_shower(self, dt):
+        """Update meteor shower event system"""
+        self.meteor_shower_timer += dt
+        
+        # Check if it's time for a new meteor shower
+        if not self.meteor_shower_active and self.meteor_shower_timer >= self.meteor_shower_interval:
+            # Start meteor shower!
+            self.meteor_shower_active = True
+            self.meteor_shower_duration = random.uniform(12, 18)  # 12-18 seconds of chill shower
+            self.meteor_shower_timer = 0
+            self.meteor_spawn_timer = 0
+            print("[METEOR SHOWER] ✨🌠 Beautiful meteor shower begins! 🌠✨")
+        
+        # Update active meteor shower
+        if self.meteor_shower_active:
+            self.meteor_shower_duration -= dt
+            self.meteor_spawn_timer += dt
+            
+            # Spawn meteors during shower (every 0.5-1.2 seconds for chill effect)
+            if self.meteor_spawn_timer >= random.uniform(0.5, 1.2):
+                self.meteor_spawn_timer = 0
+                self._spawn_meteor()
+            
+            # End shower
+            if self.meteor_shower_duration <= 0:
+                self.meteor_shower_active = False
+                self.meteor_shower_timer = 0
+                self.meteor_shower_interval = random.uniform(40, 60)  # Next shower in 40-60s
+                print("[METEOR SHOWER] 🌙 The sky calms down... peaceful night returns.")
+    
+    def _spawn_meteor(self):
+        """Spawn a single meteor from the sky"""
+        # Spawn from top of screen, slightly off to the right
+        spawn_x = random.uniform(self.width * BLOCK_SIZE * 0.3, self.width * BLOCK_SIZE * 0.9)
+        spawn_y = -20  # Above screen
+        
+        meteor = Meteor(spawn_x, spawn_y)
+        self.meteors.append(meteor)
+    
+    def _meteor_impact(self, meteor):
+        """Handle meteor impact with ground"""
+        block_x, block_y = meteor.get_block_pos()
+        
+        print(f"[METEOR] ✨ Impact at ({block_x}, {block_y})!")
+        
+        # Very soft impact - no destruction or only 1 block
+        impact_radius = 0
+        destroyed = 0
+        
+        # Only destroy block at exact impact point (30% chance)
+        if random.random() < 0.3:
+            if self.mine_block_at(block_x, block_y, 999):
+                destroyed += 1
+        
+        # Create beautiful impact particles
+        impact_particles = meteor.create_impact_particles()
+        for particle_data in impact_particles:
+            particle = Particle(
+                particle_data['x'], 
+                particle_data['y'],
+                meteor.get_color_rgb()
+            )
+            # Override velocity with custom values
+            particle.velocity_x = particle_data['vx']
+            particle.velocity_y = particle_data['vy']
+            particle.lifetime = particle_data['life']
+            particle.max_lifetime = particle_data['max_life']
+            self.particles.append(particle)
+        
+        # Spawn rare items (crystal or rare ore) - guaranteed drop!
+        spawn_chance = random.random()
+        if spawn_chance < 0.80:  # 80% chance for crystal
+            self.spawn_item(block_x * BLOCK_SIZE, block_y * BLOCK_SIZE, 'crystal')
+        else:  # 20% chance for rare ore
+            self.spawn_item(block_x * BLOCK_SIZE, block_y * BLOCK_SIZE, 'rare_ore')
+        
+        # Soft sound effect
+        if SOUND_ENABLED:
+            sound_gen.play_meteor_impact()
+    
+    def is_meteor_shower_active(self):
+        """Check if meteor shower is currently active"""
+        return self.meteor_shower_active

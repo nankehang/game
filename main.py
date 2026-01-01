@@ -46,17 +46,30 @@ class Game:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
                 elif event.key == pygame.K_SPACE:
-                    # Spawn TNT at player position (manual)
+                    # Jump
+                    self.player.jump()
+                elif event.key == pygame.K_t:
+                    # Drop TNT at player position
                     self.world.spawn_tnt(self.player.x, self.player.y, fuse_time=2.0)
                 elif event.key == pygame.K_r:
-                    # Reset player position
-                    self.player.x = SCREEN_WIDTH // 2
-                    self.player.y = 100
-                    self.player.velocity_y = 0
+                    # Reset player position (respawn)
+                    self.respawn_player()
+                    print("[GAME] Player respawned at surface!")
                 elif event.key == pygame.K_F3:
                     # Toggle debug mode
                     self.debug_mode = not self.debug_mode
                     print(f"[DEBUG MODE] {'ON' if self.debug_mode else 'OFF'}")
+                elif event.key == pygame.K_m:
+                    # Trigger meteor shower (for testing)
+                    if not self.world.meteor_shower_active:
+                        self.world.meteor_shower_active = True
+                        self.world.meteor_shower_duration = 15
+                        self.world.meteor_spawn_timer = 0
+                        print("[TEST] Meteor shower triggered!")
+            elif event.type == pygame.KEYUP:
+                # Variable jump - release jump button
+                if event.key == pygame.K_SPACE:
+                    self.player.release_jump()
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
                     # Manual mining at mouse position
@@ -74,8 +87,21 @@ class Game:
         
     def update(self, dt):
         """Update game state"""
+        # Update background effects (snow, shooting stars)
+        self.renderer.update_background_effects(dt)
+        
         # Update player
         self.player.update(dt, self.world)
+        
+        # Check if player hit bedrock or fell out of world
+        if self.player.fell_to_bedrock:
+            print("[GAME] 💀 Player reached bedrock! Respawning at surface...")
+            self.respawn_player()
+        
+        max_y = (BEDROCK_START + 5) * BLOCK_SIZE  # 5 blocks below bedrock (backup)
+        if self.player.y > max_y:
+            print("[GAME] ⚠️ Player fell out of world! Respawning...")
+            self.respawn_player()
         
         # Update world (TNT, particles) - pass player for explosion knockback
         self.world.update(dt, self.player, self)
@@ -100,6 +126,9 @@ class Game:
         """Render everything to screen"""
         self.screen.fill(SKY_COLOR)
         
+        # Render twinkling stars (background)
+        self.renderer.render_stars()
+        
         # Apply screen shake to camera
         shake_x = 0
         shake_y = 0
@@ -114,8 +143,17 @@ class Game:
         # Render world with camera offset
         self.renderer.render_world(self.world, camera_x, camera_y)
         
+        # Render meteors (behind player but in front of blocks)
+        self.renderer.render_meteors(self.world, camera_x, camera_y)
+        
         # Render player with debug mode
         self.renderer.render_player(self.player, camera_x, camera_y, self.debug_mode)
+        
+        # Render meteor shower indicator
+        self.renderer.render_meteor_shower_indicator(self.world)
+        
+        # Render snow and shooting stars (in front of everything!)
+        self.renderer.render_background_effects()
         
         # Render flash effect
         if self.flash_alpha > 0:
@@ -177,6 +215,25 @@ class Game:
         """Trigger screen flash effect"""
         self.flash_color = color
         self.flash_alpha = alpha
+    
+    def respawn_player(self):
+        """Respawn player at surface safely"""
+        # Find safe spawn position (grass layer)
+        spawn_x = SCREEN_WIDTH // 2
+        spawn_y = (GRASS_LAYER - 2) * BLOCK_SIZE  # Above grass layer
+        
+        self.player.x = spawn_x
+        self.player.y = spawn_y
+        self.player.velocity_x = 0
+        self.player.velocity_y = 0
+        self.player.on_ground = False
+        
+        # Reset all player states
+        self.player.knockback_timer = 0
+        self.player.hurt_state = False
+        self.player.hurt_timer = 0
+        self.player.control_locked = False
+        self.player.fell_to_bedrock = False  # Reset bedrock flag
             
     def run(self):
         """Main game loop"""

@@ -13,10 +13,10 @@ CHUNK_WIDTH = 100
 WORLD_HEIGHT = 500
 
 # Colors
-SKY_COLOR = (135, 206, 235)
+SKY_COLOR = (15, 15, 40)  # Dark night sky
 
 # Physics
-GRAVITY = 800  # pixels per second squared
+GRAVITY = 1000  # pixels per second squared (increased for better feel)
 PLAYER_SPEED = 150  # pixels per second
 JUMP_FORCE = -400
 TERMINAL_VELOCITY = 600

@@ -344,6 +344,52 @@ class SoundGenerator:
     def play_dig(self):
         """Play dig sound"""
         self.play_sound('dig')
+    
+    def play_meteor_impact(self):
+        """Play soft meteor impact sound"""
+        # Generate soft, magical impact sound
+        duration = 0.8
+        sample_rate = 22050
+        num_samples = int(duration * sample_rate)
+        t = np.linspace(0, duration, num_samples)
+        
+        # Soft whoosh with sparkle
+        # Phase 1: Soft whoosh (0-0.3s)
+        whoosh = np.zeros(num_samples)
+        whoosh_duration = 0.3
+        whoosh_samples = int(whoosh_duration * sample_rate)
+        whoosh_t = t[:whoosh_samples]
+        
+        # Soft noise sweep
+        for freq in [100, 150, 200]:
+            whoosh[:whoosh_samples] += np.sin(2 * np.pi * freq * whoosh_t) * np.exp(-whoosh_t * 8)
+        
+        # Phase 2: Sparkle chime (0.2-0.8s)
+        chime = np.zeros(num_samples)
+        chime_start = int(0.2 * sample_rate)
+        chime_t = t[chime_start:]
+        
+        # Multiple soft bell tones
+        for freq in [800, 1000, 1200, 1600]:
+            chime[chime_start:] += np.sin(2 * np.pi * freq * chime_t) * np.exp(-chime_t * 3)
+        
+        # Combine
+        audio = whoosh * 0.3 + chime * 0.4
+        
+        # Soft volume envelope
+        envelope = np.exp(-t * 2.5)
+        audio = audio * envelope * 0.15  # Very soft - 15% volume
+        
+        # Normalize
+        audio = audio / np.max(np.abs(audio)) * 0.3  # Cap at 30%
+        
+        # Convert to 16-bit stereo
+        audio = np.clip(audio * 32767, -32768, 32767).astype(np.int16)
+        stereo_audio = np.column_stack([audio, audio])
+        
+        # Play immediately
+        sound = pygame.sndarray.make_sound(stereo_audio)
+        sound.play()
 
 # Global sound generator instance
 try:
