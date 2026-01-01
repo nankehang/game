@@ -10,7 +10,7 @@ class SoundGenerator:
     """Generate procedural sound effects"""
     
     def __init__(self):
-        pygame.mixer.init(frequency=22050, size=-16, channels=1, buffer=512)
+        pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
         self.sounds = {}
         self._generate_all_sounds()
     
@@ -40,30 +40,82 @@ class SoundGenerator:
         # Convert to 16-bit
         wave = np.int16(wave * 32767)
         
-        return pygame.sndarray.make_sound(wave)
+        # Convert mono to stereo
+        stereo_wave = np.column_stack((wave, wave))
+        
+        return pygame.sndarray.make_sound(stereo_wave)
     
-    def _generate_explosion(self, duration=0.5):
-        """Generate low boom for explosion"""
+    def _generate_explosion(self, duration=0.6):
+        """Generate retro 8-bit explosion with strong impact"""
         sample_rate = 22050
         samples = int(duration * sample_rate)
-        
-        # Generate noise with low-pass filter
-        noise = np.random.uniform(-1, 1, samples)
-        
-        # Apply envelope (quick attack, slow decay)
-        envelope = np.exp(-np.linspace(0, 8, samples))
-        wave = noise * envelope
-        
-        # Add low frequency rumble
         t = np.linspace(0, duration, samples)
-        rumble = np.sin(2 * np.pi * 60 * t) * 0.5
-        wave += rumble * envelope
         
-        # Normalize and convert
-        wave = wave / np.max(np.abs(wave))
-        wave = np.int16(wave * 32767 * 0.5)  # Lower volume
+        # Phase 1: Initial blast (0-0.1s) - Sharp, low-frequency impact
+        blast_duration = 0.1
+        blast_samples = int(blast_duration * sample_rate)
         
-        return pygame.sndarray.make_sound(wave)
+        # Super low frequency for knockback feel (40-80 Hz sweep down)
+        blast_freq = np.linspace(80, 40, blast_samples)
+        blast_wave = np.sin(2 * np.pi * np.cumsum(blast_freq) / sample_rate)
+        
+        # Add square wave harmonics for 8-bit character
+        blast_wave += 0.3 * np.sign(np.sin(2 * np.pi * np.cumsum(blast_freq * 2) / sample_rate))
+        
+        # Sharp attack envelope for blast
+        blast_envelope = np.exp(-np.linspace(0, 12, blast_samples))
+        blast_wave *= blast_envelope
+        
+        # Phase 2: White noise explosion body (0.1-0.3s)
+        body_duration = 0.2
+        body_samples = int(body_duration * sample_rate)
+        
+        # Filtered white noise for debris/crackle
+        body_noise = np.random.uniform(-1, 1, body_samples)
+        
+        # Band-pass filter effect (keep mid-high frequencies)
+        for i in range(1, len(body_noise)):
+            body_noise[i] = body_noise[i] * 0.7 + body_noise[i-1] * 0.3
+        
+        # Decay envelope
+        body_envelope = np.exp(-np.linspace(0, 8, body_samples))
+        body_noise *= body_envelope
+        
+        # Phase 3: Pixel crackle tail (0.3-0.6s)
+        tail_samples = samples - blast_samples - body_samples
+        
+        # Random crackle/debris sounds
+        tail_crackle = np.random.uniform(-0.4, 0.4, tail_samples)
+        
+        # Add occasional "pops" for pixel debris
+        pop_positions = np.random.randint(0, tail_samples, 15)
+        for pos in pop_positions:
+            if pos < tail_samples - 20:
+                # Mini explosion pops
+                pop_freq = np.random.uniform(200, 600)
+                pop_length = 20
+                pop_t = np.linspace(0, pop_length/sample_rate, pop_length)
+                pop = np.sin(2 * np.pi * pop_freq * pop_t) * np.exp(-pop_t * 50)
+                tail_crackle[pos:pos+pop_length] += pop * 0.3
+        
+        # Fast decay envelope for tail
+        tail_envelope = np.exp(-np.linspace(0, 10, tail_samples))
+        tail_crackle *= tail_envelope
+        
+        # Combine all phases
+        wave = np.zeros(samples)
+        wave[:blast_samples] = blast_wave
+        wave[blast_samples:blast_samples+body_samples] = body_noise
+        wave[blast_samples+body_samples:] = tail_crackle
+        
+        # Normalize and convert with emphasis on low end
+        wave = wave / np.max(np.abs(wave)) * 0.8
+        wave = np.int16(wave * 32767)
+        
+        # Convert mono to stereo
+        stereo_wave = np.column_stack((wave, wave))
+        
+        return pygame.sndarray.make_sound(stereo_wave)
     
     def _generate_click(self, duration=0.05):
         """Generate short click for block break"""
@@ -80,7 +132,10 @@ class SoundGenerator:
         # Convert
         wave = np.int16(wave * 32767)
         
-        return pygame.sndarray.make_sound(wave)
+        # Convert mono to stereo
+        stereo_wave = np.column_stack((wave, wave))
+        
+        return pygame.sndarray.make_sound(stereo_wave)
     
     def _generate_dig(self, duration=0.08):
         """Generate digging sound"""
@@ -102,7 +157,10 @@ class SoundGenerator:
         # Convert
         wave = np.int16(wave * 32767)
         
-        return pygame.sndarray.make_sound(wave)
+        # Convert mono to stereo
+        stereo_wave = np.column_stack((wave, wave))
+        
+        return pygame.sndarray.make_sound(stereo_wave)
     
     def play_sound(self, sound_name):
         """Play a generated sound effect"""
@@ -130,10 +188,16 @@ class SoundGenerator:
 
 # Global sound generator instance
 try:
+    import numpy as np  # Ensure numpy is imported
     sound_gen = SoundGenerator()
     SOUND_ENABLED = True
-except:
+    print("[SOUND] Retro explosion sound effects loaded!")
+except ImportError as e:
     # If numpy not available, disable sound
     sound_gen = None
     SOUND_ENABLED = False
-    print("Sound disabled (numpy not available)")
+    print(f"[SOUND] Disabled - numpy not available: {e}")
+except Exception as e:
+    sound_gen = None
+    SOUND_ENABLED = False
+    print(f"[SOUND] Disabled - initialization error: {e}")

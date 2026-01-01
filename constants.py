@@ -28,6 +28,12 @@ MANUAL_MINE_DAMAGE = 50  # Damage per click
 # TNT
 TNT_FUSE_TIME = 3.0  # seconds
 TNT_EXPLOSION_RADIUS = 3  # blocks
+TNT_SPAWN_INTERVAL = 5.0  # Base seconds between TNT spawns
+TNT_MIN_FUSE = 2.0  # Minimum fuse time
+TNT_MAX_FUSE = 3.5  # Maximum fuse time
+TNT_KNOCKBACK_FORCE = 150  # Knockback strength (reduced from 300)
+TNT_BASE_SPAWN_CHANCE = 0.3  # 30% base chance per spawn check
+TNT_DEPTH_MULTIPLIER = 0.02  # +2% per 10m depth
 
 # Block definitions with Minecraft-like colors
 BLOCK_COLORS = {

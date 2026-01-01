@@ -26,6 +26,15 @@ class Game:
         self.camera_x = 0
         self.camera_y = 0
         
+        # Screen effects
+        self.screen_shake_intensity = 0
+        self.screen_shake_duration = 0
+        self.flash_alpha = 0
+        self.flash_color = (255, 255, 255)
+        
+        # Debug mode
+        self.debug_mode = True  # Start with debug ON
+        
         self.running = True
         
     def handle_events(self):
@@ -37,13 +46,17 @@ class Game:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
                 elif event.key == pygame.K_SPACE:
-                    # Spawn TNT at player position
-                    self.world.spawn_tnt(self.player.x, self.player.y)
+                    # Spawn TNT at player position (manual)
+                    self.world.spawn_tnt(self.player.x, self.player.y, fuse_time=2.0)
                 elif event.key == pygame.K_r:
                     # Reset player position
                     self.player.x = SCREEN_WIDTH // 2
                     self.player.y = 100
                     self.player.velocity_y = 0
+                elif event.key == pygame.K_F3:
+                    # Toggle debug mode
+                    self.debug_mode = not self.debug_mode
+                    print(f"[DEBUG MODE] {'ON' if self.debug_mode else 'OFF'}")
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
                     # Manual mining at mouse position
@@ -64,22 +77,52 @@ class Game:
         # Update player
         self.player.update(dt, self.world)
         
-        # Update world (TNT, particles)
-        self.world.update(dt)
+        # Update world (TNT, particles) - pass player for explosion knockback
+        self.world.update(dt, self.player, self)
         
         # Update camera to follow player
         self.camera_x = max(0, self.player.x - SCREEN_WIDTH // 2)
         self.camera_y = max(0, self.player.y - SCREEN_HEIGHT // 2)
         
+        # Update screen shake
+        if self.screen_shake_duration > 0:
+            self.screen_shake_duration -= dt
+            if self.screen_shake_duration <= 0:
+                self.screen_shake_intensity = 0
+        
+        # Update flash effect
+        if self.flash_alpha > 0:
+            self.flash_alpha -= dt * 500  # Fade out
+            if self.flash_alpha < 0:
+                self.flash_alpha = 0
+        
     def render(self):
         """Render everything to screen"""
         self.screen.fill(SKY_COLOR)
         
-        # Render world with camera offset
-        self.renderer.render_world(self.world, self.camera_x, self.camera_y)
+        # Apply screen shake to camera
+        shake_x = 0
+        shake_y = 0
+        if self.screen_shake_intensity > 0:
+            import random
+            shake_x = random.randint(-int(self.screen_shake_intensity), int(self.screen_shake_intensity))
+            shake_y = random.randint(-int(self.screen_shake_intensity), int(self.screen_shake_intensity))
         
-        # Render player
-        self.renderer.render_player(self.player, self.camera_x, self.camera_y)
+        camera_x = self.camera_x + shake_x
+        camera_y = self.camera_y + shake_y
+        
+        # Render world with camera offset
+        self.renderer.render_world(self.world, camera_x, camera_y)
+        
+        # Render player with debug mode
+        self.renderer.render_player(self.player, camera_x, camera_y, self.debug_mode)
+        
+        # Render flash effect
+        if self.flash_alpha > 0:
+            flash_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+            flash_surface.fill(self.flash_color)
+            flash_surface.set_alpha(int(self.flash_alpha))
+            self.screen.blit(flash_surface, (0, 0))
         
         # Render UI
         self.render_ui()
@@ -95,12 +138,23 @@ class Game:
         depth_text = font.render(f"Depth: {depth}m", True, (255, 255, 255))
         self.screen.blit(depth_text, (10, 10))
         
+        # TNT statistics
+        active_tnt = len(self.world.tnt_list)
+        total_spawned = self.world.total_tnt_spawned
+        spawn_chance = TNT_BASE_SPAWN_CHANCE + (depth * TNT_DEPTH_MULTIPLIER)
+        spawn_chance = min(0.95, spawn_chance) * 100
+        
+        tnt_stats = font.render(f"TNT: {active_tnt} active | {total_spawned} spawned | {spawn_chance:.0f}% chance", 
+                                True, (255, 200, 0))
+        self.screen.blit(tnt_stats, (SCREEN_WIDTH - 450, 10))
+        
         # Controls
         controls = [
             "A/D or Arrows: Move",
-            "SPACE: Spawn TNT",
+            "SPACE: Manual TNT (player pos)",
             "Click: Mine Block",
             "R: Reset Position",
+            "F3: Toggle Debug",
             "ESC: Quit"
         ]
         y = 40
@@ -108,6 +162,21 @@ class Game:
             text = font.render(control, True, (200, 200, 200))
             self.screen.blit(text, (10, y))
             y += 25
+        
+        # Debug mode indicator
+        if self.debug_mode:
+            debug_text = font.render("[DEBUG MODE ON]", True, (255, 255, 0))
+            self.screen.blit(debug_text, (10, y + 10))
+    
+    def trigger_screen_shake(self, intensity, duration):
+        """Trigger screen shake effect"""
+        self.screen_shake_intensity = max(self.screen_shake_intensity, intensity)
+        self.screen_shake_duration = max(self.screen_shake_duration, duration)
+    
+    def trigger_flash(self, color=(255, 200, 100), alpha=150):
+        """Trigger screen flash effect"""
+        self.flash_color = color
+        self.flash_alpha = alpha
             
     def run(self):
         """Main game loop"""

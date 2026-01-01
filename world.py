@@ -20,6 +20,11 @@ class World:
         self.tnt_list = []
         self.particles = []
         
+        # TNT spawning system
+        self.tnt_spawn_timer = 0
+        self.tnt_spawn_interval = TNT_SPAWN_INTERVAL
+        self.total_tnt_spawned = 0
+        
         # Generate initial world
         self._generate_world()
     
@@ -127,7 +132,7 @@ class World:
             particle = Particle(world_x, world_y, color)
             self.particles.append(particle)
     
-    def spawn_tnt(self, x, y):
+    def spawn_tnt(self, x, y, fuse_time=None):
         """Spawn TNT at world position"""
         grid_x = int(x // BLOCK_SIZE)
         grid_y = int(y // BLOCK_SIZE)
@@ -136,20 +141,101 @@ class World:
         if self.get_block(grid_x, grid_y):
             return  # Can't spawn in solid block
         
-        tnt = TNT(x, y)
+        tnt = TNT(x, y, fuse_time)
         self.tnt_list.append(tnt)
-        print(f"TNT spawned at ({grid_x}, {grid_y})")
+        print(f"[TNT] Spawned at ({grid_x}, {grid_y}) with {tnt.fuse_time:.1f}s fuse")
     
-    def _explode_tnt(self, tnt):
+    def spawn_random_tnt_from_top(self, player_depth):
+        """Spawn TNT from random position at top of screen"""
+        # Calculate spawn chance based on depth
+        depth_factor = player_depth * TNT_DEPTH_MULTIPLIER
+        spawn_chance = TNT_BASE_SPAWN_CHANCE + depth_factor
+        spawn_chance = min(0.95, spawn_chance)  # Cap at 95%
+        
+        if random.random() < spawn_chance:
+            # Random horizontal position
+            spawn_x = random.randint(1, self.width - 2) * BLOCK_SIZE
+            spawn_y = 0  # Top of world
+            
+            # Spawn with random fuse time
+            self.spawn_tnt(spawn_x, spawn_y)
+            self.total_tnt_spawned += 1
+            
+            return True
+        return False
+    
+    def _explode_tnt(self, tnt, player=None, game=None):
+        """Handle TNT explosion"""
         # Play explosion sound
         if SOUND_ENABLED:
             sound_gen.play_explosion()
         
-        """Handle TNT explosion"""
         center_x = int(tnt.x // BLOCK_SIZE)
         center_y = int(tnt.y // BLOCK_SIZE)
         
-        print(f"TNT exploding at ({center_x}, {center_y})")
+        print(f"[TNT] BOOM at ({center_x}, {center_y})!")
+        
+        # Trigger screen shake and flash
+        if game:
+            # Shake intensity based on distance to player
+            if player:
+                dx = player.x - tnt.x
+                dy = player.y - tnt.y
+                distance_to_player = (dx * dx + dy * dy) ** 0.5
+                max_shake_distance = (TNT_EXPLOSION_RADIUS + 5) * BLOCK_SIZE
+                
+                if distance_to_player < max_shake_distance:
+                    shake_intensity = 15 * (1.0 - distance_to_player / max_shake_distance)
+                    game.trigger_screen_shake(shake_intensity, 0.3)
+            else:
+                game.trigger_screen_shake(10, 0.3)
+            
+            game.trigger_flash((255, 200, 100), 180)
+        
+        # Apply knockback to player if nearby
+        if player:
+            dx = player.x + player.width / 2 - (tnt.x + tnt.width / 2)
+            dy = player.y + player.height / 2 - (tnt.y + tnt.height / 2)
+            distance = (dx * dx + dy * dy) ** 0.5
+            
+            max_knockback_distance = (TNT_EXPLOSION_RADIUS + 2) * BLOCK_SIZE
+            
+            if distance < max_knockback_distance:
+                # Calculate knockback with improved physics
+                if distance > 0:
+                    # Normalize direction
+                    dir_x = dx / distance
+                    dir_y = dy / distance
+                    
+                    # Force decreases with distance (inverse square law, but clamped)
+                    distance_ratio = 1.0 - (distance / max_knockback_distance)
+                    force_multiplier = distance_ratio ** 0.7  # Power < 1 for smoother falloff
+                    
+                    # Base force
+                    base_force = TNT_KNOCKBACK_FORCE
+                    
+                    # Apply force with upward bias (launch effect)
+                    knockback_x = dir_x * base_force * force_multiplier
+                    knockback_y = dir_y * base_force * force_multiplier
+                    
+                    # Add extra upward force for dramatic effect
+                    if knockback_y > 0:  # If pushing down, reduce it
+                        knockback_y *= 0.5
+                    else:  # If pushing up, enhance it
+                        knockback_y *= 1.5
+                    
+                    # Ensure minimum upward component
+                    knockback_y = min(knockback_y, -base_force * 0.3)
+                    
+                    # Variable hurt duration based on distance
+                    hurt_duration = 0.5 + (0.5 * distance_ratio)  # 0.5-1.0 seconds
+                    
+                    player.apply_knockback(knockback_x, knockback_y, hurt_duration)
+                    print(f"[TNT] Player launched! Distance: {distance:.1f}, Force: ({knockback_x:.1f}, {knockback_y:.1f}), Hurt: {hurt_duration:.1f}s")
+                else:
+                    # Direct hit - maximum force
+                    player.apply_knockback(0, -TNT_KNOCKBACK_FORCE * 1.5, 1.0)
+                    print(f"[TNT] DIRECT HIT! Maximum knockback!")
         
         # Destroy blocks in radius
         destroyed_count = 0
@@ -191,14 +277,26 @@ class World:
                 # Trigger this TNT immediately
                 tnt.fuse_time = 0
     
-    def update(self, dt):
+    def update(self, dt, player=None, game=None):
         """Update TNT and particles"""
+        # Update TNT spawn timer
+        self.tnt_spawn_timer += dt
+        if self.tnt_spawn_timer >= self.tnt_spawn_interval:
+            self.tnt_spawn_timer = 0
+            
+            # Try to spawn TNT from top
+            if player:
+                player_depth = max(0, (player.y // BLOCK_SIZE) - GRASS_LAYER)
+                if self.spawn_random_tnt_from_top(player_depth):
+                    # Vary next spawn interval slightly
+                    self.tnt_spawn_interval = TNT_SPAWN_INTERVAL + random.uniform(-1.0, 1.0)
+        
         # Update TNT
         for tnt in self.tnt_list[:]:
             tnt.update(dt, self)
             
             if tnt.should_explode():
-                self._explode_tnt(tnt)
+                self._explode_tnt(tnt, player, game)
                 self.tnt_list.remove(tnt)
         
         # Update particles
