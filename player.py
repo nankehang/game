@@ -841,26 +841,27 @@ class Player:
     
     def _auto_mine(self, dt, world):
         """Automatically mine blocks directly below player"""
-        # Get blocks below player feet
-        left_foot = int((self.x + 4) // BLOCK_SIZE)
-        right_foot = int((self.x + self.width - 4) // BLOCK_SIZE)
+        # Get blocks below player feet (including center)
+        left_foot = int(self.x // BLOCK_SIZE)
+        right_foot = int((self.x + self.width) // BLOCK_SIZE)
         foot_y = int((self.y + self.height + 1) // BLOCK_SIZE)
         
         self.is_mining = False
         
-        # Try to mine blocks below
-        for bx in [left_foot, right_foot]:
-            block = world.get_block(bx, foot_y)
-            if block and block.is_mineable():
-                self.is_mining = True
-                # Apply mining speed bonus from level
-                speed_multiplier = 1.0 + self.mining_speed_bonus
-                base_damage = AUTO_DIG_DAMAGE * dt
-                damage = base_damage * speed_multiplier
-                if world.mine_block_at(bx, foot_y, damage):
-                    # Block was destroyed
-                    print(f"[DEBUG] Block broken! Base dmg={base_damage:.2f}, Multiplier={speed_multiplier:.2f}x, Final={damage:.2f}")
-                    pass
+        # Try to mine all blocks below player (from left to right)
+        for bx in range(left_foot, right_foot + 1):
+            if 0 <= bx < CHUNK_WIDTH:  # Check bounds
+                block = world.get_block(bx, foot_y)
+                if block and block.is_mineable():
+                    self.is_mining = True
+                    # Apply mining speed bonus from level
+                    speed_multiplier = 1.0 + self.mining_speed_bonus
+                    base_damage = AUTO_DIG_DAMAGE * dt
+                    damage = base_damage * speed_multiplier
+                    if world.mine_block_at(bx, foot_y, damage):
+                        # Block was destroyed
+                        print(f"[DEBUG] Block broken! Base dmg={base_damage:.2f}, Multiplier={speed_multiplier:.2f}x, Final={damage:.2f}")
+                        pass
     
     def _update_animation(self, dt):
         """Update animation state and frame"""
@@ -942,7 +943,7 @@ class Player:
         if prev_state != self.animation_state:
             print(f"[ANIM] {prev_state} -> {self.animation_state} | Mining:{self.is_mining} Ground:{self.on_ground}/{self.was_on_ground}")
     
-    def apply_knockback(self, force_x, force_y, hurt_duration=0.7):
+    def apply_knockback(self, force_x, force_y, hurt_duration=0.7, damage=1):
         """Apply knockback force to player (e.g., from explosions)"""
         # Play hit sound
         from sound_generator import sound_gen, SOUND_ENABLED
@@ -971,10 +972,10 @@ class Player:
         # Add temporary resistance (prevents multiple TNT from launching player)
         self.knockback_resistance = min(0.8, self.knockback_resistance + 0.3)
         
-        # Take HP damage from explosion
-        self.current_hp -= 1
+        # Take HP damage from explosion (scaled by damage parameter)
+        self.current_hp -= damage
         self.last_damage_time = 0  # Reset regen timer
-        print(f"[HP] HP Lost! Current HP: {self.current_hp}/{self.max_hp}")
+        print(f"[HP] Took {damage} damage! Current HP: {self.current_hp}/{self.max_hp}")
         
         # Check for death
         if self.current_hp <= 0:

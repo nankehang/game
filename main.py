@@ -8,6 +8,7 @@ import sys
 from world import World
 from player import Player
 from renderer import Renderer
+from ai_bot import AIBot
 from constants import *
 
 class Game:
@@ -21,6 +22,7 @@ class Game:
         self.world = World()
         self.player = Player(SCREEN_WIDTH // 2, 100)
         self.renderer = Renderer(self.screen)
+        self.ai_bot = AIBot(self.player, self.world)
         
         # Camera offset for scrolling
         self.camera_x = 0
@@ -39,7 +41,34 @@ class Game:
         # Debug mode
         self.debug_mode = True  # Start with debug ON
         
+        # Game state
+        self.game_state = 'menu'  # menu, playing
+        self.menu_selection = 0  # 0 = Manual, 1 = AI Bot
+        
         self.running = True
+    
+    def start_game(self):
+        """Start the game based on menu selection"""
+        self.game_state = 'playing'
+        
+        if self.menu_selection == 1:  # AI Bot
+            self.ai_bot.enabled = True
+            print("[GAME] Starting game with AI Bot!")
+        else:  # Manual
+            self.ai_bot.enabled = False
+            print("[GAME] Starting game in Manual mode!")
+        
+        # Reset game state
+        self.world = World()
+        self.player = Player(SCREEN_WIDTH // 2, 100)
+        self.renderer = Renderer(self.screen)
+        self.ai_bot = AIBot(self.player, self.world)
+        if self.menu_selection == 1:
+            self.ai_bot.enabled = True
+        self.camera_x = 0
+        self.camera_y = 0
+        self.death_timer = 0
+        self.is_waiting_respawn = False
         
     def handle_events(self):
         """Handle keyboard and mouse input"""
@@ -48,8 +77,24 @@ class Game:
                 self.running = False
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    self.running = False
-                elif event.key == pygame.K_SPACE:
+                    if self.game_state == 'playing':
+                        self.game_state = 'menu'  # Return to menu
+                        self.ai_bot.enabled = False
+                    else:
+                        self.running = False
+                
+                # Menu controls
+                if self.game_state == 'menu':
+                    if event.key == pygame.K_UP or event.key == pygame.K_w:
+                        self.menu_selection = max(0, self.menu_selection - 1)
+                    elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
+                        self.menu_selection = min(1, self.menu_selection + 1)
+                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        self.start_game()
+                    continue  # Skip other controls in menu
+                
+                # Game controls (only when playing)
+                if event.key == pygame.K_SPACE:
                     # Jump
                     self.player.jump()
                 elif event.key == pygame.K_t:
@@ -78,6 +123,9 @@ class Game:
                         self.world.meteor_shower_duration = 15
                         self.world.meteor_spawn_timer = 0
                         print("[TEST] Meteor shower triggered!")
+                elif event.key == pygame.K_b:
+                    # Toggle AI bot
+                    self.ai_bot.toggle()
             elif event.type == pygame.KEYUP:
                 # Variable jump - release jump button
                 if event.key == pygame.K_SPACE:
@@ -93,17 +141,25 @@ class Game:
                     print(f"[DEBUG] Manual mine: Base={MANUAL_MINE_DAMAGE}, Multiplier={speed_multiplier:.2f}x, Damage={damage:.2f}")
                     self.world.mine_block_at(world_x, world_y, damage)
         
-        # Continuous input
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-            self.player.move_left()
-        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-            self.player.move_right()
+        # Continuous input (only if AI bot is disabled and in game)
+        if self.game_state == 'playing' and not self.ai_bot.enabled:
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                self.player.move_left()
+            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                self.player.move_right()
         
     def update(self, dt):
         """Update game state"""
+        # Only update game when playing
+        if self.game_state != 'playing':
+            return
+        
         # Update background effects (snow, shooting stars)
         self.renderer.update_background_effects(dt)
+        
+        # Update AI bot (controls player if enabled)
+        self.ai_bot.update(dt)
         
         # Update player
         self.player.update(dt, self.world)
@@ -153,6 +209,11 @@ class Game:
         
     def render(self):
         """Render everything to screen"""
+        # Render menu if in menu state
+        if self.game_state == 'menu':
+            self.render_menu()
+            return
+        
         # Check if player is in Nether (below bedrock)
         player_depth_y = int(self.player.y // BLOCK_SIZE)
         in_nether = player_depth_y > BEDROCK_START
@@ -300,6 +361,19 @@ class Game:
             
             self.screen.blit(level_text, (10, 32))
         
+        # AI Bot indicator
+        if self.ai_bot.enabled:
+            bot_text = font_large.render(f"🤖 AI BOT: {self.ai_bot.state.upper()}", True, (100, 255, 100))
+            # Add glow effect
+            import math
+            pulse = abs(math.sin(pygame.time.get_ticks() / 200))
+            glow_alpha = int(100 * pulse)
+            glow_surf = font_large.render(f"🤖 AI BOT: {self.ai_bot.state.upper()}", True, (255, 255, 255))
+            glow_surf.set_alpha(glow_alpha)
+            self.screen.blit(glow_surf, (SCREEN_WIDTH - 252, 8))
+            self.screen.blit(glow_surf, (SCREEN_WIDTH - 248, 8))
+            self.screen.blit(bot_text, (SCREEN_WIDTH - 250, 10))
+        
         # TNT Power Display
         tnt_level = self.player.tnt_power_level
         if tnt_level > 0:
@@ -346,6 +420,81 @@ class Game:
         if self.debug_mode:
             debug_text = font.render("[DEBUG MODE ON]", True, (255, 255, 0))
             self.screen.blit(debug_text, (10, y + 10))
+    
+    def render_menu(self):
+        """Render the main menu"""
+        # Background gradient
+        for y in range(SCREEN_HEIGHT):
+            alpha = y / SCREEN_HEIGHT
+            color_top = (20, 100, 180)  # Sky blue
+            color_bottom = (100, 150, 255)  # Light blue
+            color = (
+                int(color_top[0] + (color_bottom[0] - color_top[0]) * alpha),
+                int(color_top[1] + (color_bottom[1] - color_top[1]) * alpha),
+                int(color_top[2] + (color_bottom[2] - color_top[2]) * alpha)
+            )
+            pygame.draw.line(self.screen, color, (0, y), (SCREEN_WIDTH, y))
+        
+        # Title
+        font_huge = pygame.font.Font(None, 84)
+        font_large = pygame.font.Font(None, 48)
+        font_medium = pygame.font.Font(None, 36)
+        
+        title_text = font_huge.render("MINECRAFT MINER", True, (255, 255, 255))
+        title_rect = title_text.get_rect(center=(SCREEN_WIDTH // 2, 120))
+        
+        # Title shadow
+        shadow_text = font_huge.render("MINECRAFT MINER", True, (50, 50, 50))
+        shadow_rect = shadow_text.get_rect(center=(SCREEN_WIDTH // 2 + 3, 123))
+        self.screen.blit(shadow_text, shadow_rect)
+        self.screen.blit(title_text, title_rect)
+        
+        # Subtitle
+        subtitle_text = font_medium.render("2D Mining Adventure", True, (200, 200, 200))
+        subtitle_rect = subtitle_text.get_rect(center=(SCREEN_WIDTH // 2, 170))
+        self.screen.blit(subtitle_text, subtitle_rect)
+        
+        # Menu options
+        options = ["▶ PLAY MANUAL", "▶ AI BOT PLAY"]
+        option_y = 280
+        
+        for i, option in enumerate(options):
+            # Highlight selected option
+            if i == self.menu_selection:
+                color = (255, 255, 100)
+                scale_font = font_large
+                # Add glow effect
+                import math
+                pulse = abs(math.sin(pygame.time.get_ticks() / 200))
+                glow_alpha = int(150 * pulse)
+                glow_surf = scale_font.render(option, True, (255, 255, 255))
+                glow_surf.set_alpha(glow_alpha)
+                glow_rect = glow_surf.get_rect(center=(SCREEN_WIDTH // 2, option_y + i * 80))
+                self.screen.blit(glow_surf, glow_rect)
+            else:
+                color = (180, 180, 180)
+                scale_font = font_medium
+            
+            text = scale_font.render(option, True, color)
+            text_rect = text.get_rect(center=(SCREEN_WIDTH // 2, option_y + i * 80))
+            self.screen.blit(text, text_rect)
+        
+        # Instructions
+        font_small = pygame.font.Font(None, 28)
+        instructions = [
+            "↑/↓ - Select Option",
+            "ENTER/SPACE - Start Game",
+            "ESC - Quit"
+        ]
+        
+        inst_y = SCREEN_HEIGHT - 120
+        for instruction in instructions:
+            text = font_small.render(instruction, True, (150, 150, 150))
+            text_rect = text.get_rect(center=(SCREEN_WIDTH // 2, inst_y))
+            self.screen.blit(text, text_rect)
+            inst_y += 30
+        
+        pygame.display.flip()
     
     def trigger_screen_shake(self, intensity, duration):
         """Trigger screen shake effect"""

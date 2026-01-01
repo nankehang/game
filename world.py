@@ -327,12 +327,16 @@ class World:
                     # Variable hurt duration based on distance
                     hurt_duration = 0.5 + (0.5 * distance_ratio)  # 0.5-1.0 seconds
                     
-                    player.apply_knockback(knockback_x, knockback_y, hurt_duration)
-                    print(f"[TNT] Player launched! Distance: {distance:.1f}, Force: ({knockback_x:.1f}, {knockback_y:.1f}), Hurt: {hurt_duration:.1f}s")
+                    # Calculate damage based on TNT power level (1 base damage + 1 per 2 levels)
+                    tnt_damage = 1 + (tnt.power_level // 2)
+                    
+                    player.apply_knockback(knockback_x, knockback_y, hurt_duration, damage=tnt_damage)
+                    print(f"[TNT] Player launched! Distance: {distance:.1f}, Force: ({knockback_x:.1f}, {knockback_y:.1f}), Hurt: {hurt_duration:.1f}s, Damage: {tnt_damage}")
                 else:
-                    # Direct hit - maximum force
-                    player.apply_knockback(0, -TNT_KNOCKBACK_FORCE * 1.5, 1.0)
-                    print(f"[TNT] DIRECT HIT! Maximum knockback!")
+                    # Direct hit - maximum force and damage
+                    tnt_damage = 2 + (tnt.power_level // 2)
+                    player.apply_knockback(0, -TNT_KNOCKBACK_FORCE * 1.5, 1.0, damage=tnt_damage)
+                    print(f"[TNT] DIRECT HIT! Maximum knockback! Damage: {tnt_damage}")
         
         # Destroy blocks in radius (with TNT power bonus)
         destroyed_count = 0
