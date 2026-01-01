@@ -7,6 +7,7 @@ import random
 from block import Block
 from tnt import TNT
 from particle import Particle
+from explosion import Explosion
 from sound_generator import sound_gen, SOUND_ENABLED
 from constants import *
 
@@ -19,6 +20,7 @@ class World:
         self.blocks = {}  # Dict for sparse storage {(x,y): Block}
         self.tnt_list = []
         self.particles = []
+        self.explosions = []  # Explosion animations
         
         # TNT spawning system
         self.tnt_spawn_timer = 0
@@ -173,6 +175,11 @@ class World:
         center_x = int(tnt.x // BLOCK_SIZE)
         center_y = int(tnt.y // BLOCK_SIZE)
         
+        # Create explosion animation
+        explosion_x = center_x * BLOCK_SIZE + BLOCK_SIZE // 2
+        explosion_y = center_y * BLOCK_SIZE + BLOCK_SIZE // 2
+        self.explosions.append(Explosion(explosion_x, explosion_y))
+        
         print(f"[TNT] BOOM at ({center_x}, {center_y})!")
         
         # Trigger screen shake and flash
@@ -304,6 +311,12 @@ class World:
             particle.update(dt)
             if particle.is_dead():
                 self.particles.remove(particle)
+        
+        # Update explosions
+        for explosion in self.explosions[:]:
+            explosion.update(dt)
+            if explosion.is_finished():
+                self.explosions.remove(explosion)
     
     def get_visible_blocks(self, camera_x, camera_y, screen_width, screen_height):
         """Get blocks visible on screen for efficient rendering"""

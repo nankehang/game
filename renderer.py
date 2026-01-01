@@ -34,6 +34,10 @@ class Renderer:
         for tnt in world.tnt_list:
             self._render_tnt(tnt, camera_x, camera_y)
         
+        # Render explosions (in front of TNT but behind particles)
+        for explosion in world.explosions:
+            self._render_explosion(explosion, camera_x, camera_y)
+        
         # Render particles
         for particle in world.particles:
             self._render_particle(particle, camera_x, camera_y)
@@ -105,6 +109,19 @@ class Renderer:
             surf.set_alpha(particle.get_alpha())
             
             self.screen.blit(surf, (screen_x, screen_y))
+    
+    def _render_explosion(self, explosion, camera_x, camera_y):
+        """Render explosion animation"""
+        # Get current frame and position
+        frame_surface = explosion.get_current_frame()
+        pos_x, pos_y = explosion.get_position()
+        
+        # Convert to screen coordinates
+        screen_x = int(pos_x - camera_x)
+        screen_y = int(pos_y - camera_y)
+        
+        # Render the explosion frame
+        self.screen.blit(frame_surface, (screen_x, screen_y))
     
     def render_player(self, player, camera_x, camera_y, debug=True):
         """Render player sprite"""

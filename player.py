@@ -646,6 +646,11 @@ class Player:
     
     def apply_knockback(self, force_x, force_y, hurt_duration=0.7):
         """Apply knockback force to player (e.g., from explosions)"""
+        # Play hit sound
+        from sound_generator import sound_gen, SOUND_ENABLED
+        if SOUND_ENABLED:
+            sound_gen.play_player_hit()
+        
         # Apply resistance (reduces knockback if hit recently)
         resistance_factor = max(0.2, 1.0 - self.knockback_resistance)
         

@@ -34,11 +34,6 @@ class TNT:
         # Update fuse timer
         self.fuse_time -= dt
         
-        # Play beep sound every 0.5 seconds
-        if SOUND_ENABLED and self.fuse_time < self.last_beep_time - 0.5:
-            sound_gen.play_tnt_fuse()
-            self.last_beep_time = self.fuse_time
-        
         if self.is_falling:
             # Apply gravity
             self.velocity_y += GRAVITY * dt
@@ -69,11 +64,6 @@ class TNT:
     
     def get_fuse_ratio(self):
         """Get remaining fuse time as ratio (1.0 to 0.0)"""
-        return max(0, self.fuse_time / self.total_fuse_time)
-    
-    def should_flash(self):
-        """Check if TNT should flash red (last 30% of fuse)"""
-        return self.get_fuse_ratio() < 0.3
         return max(0, self.fuse_time / self.total_fuse_time)
     
     def should_flash(self):
