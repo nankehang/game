@@ -313,10 +313,11 @@ class SoundGenerator:
         
         return pygame.sndarray.make_sound(stereo_wave)
     
-    def play_sound(self, sound_name):
-        """Play a generated sound effect"""
+    def play_sound(self, sound_name, volume=1.0):
+        """Play a generated sound effect with adjustable volume"""
         if sound_name in self.sounds:
             try:
+                self.sounds[sound_name].set_volume(volume)
                 self.sounds[sound_name].play()
             except:
                 pass  # Fail silently if sound can't play
@@ -329,9 +330,9 @@ class SoundGenerator:
         """Play urgent TNT warning beep"""
         self.play_sound('tnt_warning')
     
-    def play_explosion(self):
-        """Play explosion boom"""
-        self.play_sound('explosion')
+    def play_explosion(self, volume=1.0):
+        """Play explosion boom with adjustable volume"""
+        self.play_sound('explosion', volume)
     
     def play_player_hit(self):
         """Play player knockback impact"""

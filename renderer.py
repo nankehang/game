@@ -368,6 +368,96 @@ class Renderer:
         hearts_x = screen_x + (32 - total_width) // 2  # Center above player
         hearts_y = screen_y - 15  # Above player head
         
+        # Mining Level XP Bar above hearts (Minecraft style)
+        if player.mining_level > 0:
+            bar_width = 50
+            bar_height = 4
+            bar_x = screen_x + (32 - bar_width) // 2
+            bar_y = hearts_y - 10
+            
+            # Background bar (dark)
+            pygame.draw.rect(self.screen, (0, 0, 0), (bar_x, bar_y, bar_width, bar_height))
+            
+            # Calculate fill based on level (each level is a segment)
+            max_display_level = 20
+            fill_ratio = min(player.mining_level / max_display_level, 1.0)
+            fill_width = int(bar_width * fill_ratio)
+            
+            # Color gradient based on level
+            if player.mining_level >= 15:
+                bar_color = (255, 50, 255)  # Purple
+            elif player.mining_level >= 10:
+                bar_color = (255, 215, 0)  # Gold
+            elif player.mining_level >= 5:
+                bar_color = (100, 255, 100)  # Bright green
+            else:
+                bar_color = (50, 200, 50)  # Green
+            
+            # Filled bar with glow effect
+            if fill_width > 0:
+                pygame.draw.rect(self.screen, bar_color, (bar_x, bar_y, fill_width, bar_height))
+                # Glow top edge
+                glow_color = tuple(min(255, c + 50) for c in bar_color)
+                pygame.draw.line(self.screen, glow_color, (bar_x, bar_y), (bar_x + fill_width, bar_y))
+            
+            # Level number below bar
+            level_font = pygame.font.Font(None, 14)
+            level_text = level_font.render(str(player.mining_level), True, (255, 255, 255))
+            level_rect = level_text.get_rect(center=(screen_x + 16, bar_y - 5))
+            # Shadow
+            shadow = level_font.render(str(player.mining_level), True, (0, 0, 0))
+            self.screen.blit(shadow, (level_rect.x + 1, level_rect.y + 1))
+            self.screen.blit(level_text, level_rect)
+        
+        # TNT Power Lightning Animation above level
+        if player.tnt_power_level > 0:
+            import math
+            tnt_y = hearts_y - 10 if player.mining_level == 0 else hearts_y - 20
+            
+            # Animated lightning bolt
+            time_ms = pygame.time.get_ticks()
+            flash_cycle = (time_ms % 1000) / 1000.0  # 0 to 1
+            
+            # Lightning color with pulse
+            pulse = abs(math.sin(time_ms / 150))
+            if player.tnt_power_level >= 10:
+                bolt_color = (255, int(50 + 100 * pulse), 0)  # Orange flash
+            elif player.tnt_power_level >= 5:
+                bolt_color = (255, int(150 + 50 * pulse), 0)  # Yellow-orange
+            else:
+                bolt_color = (255, int(200 + 55 * pulse), 0)  # Yellow
+            
+            # Draw lightning bolt symbol
+            bolt_x = screen_x + 16
+            bolt_points = [
+                (bolt_x - 2, tnt_y - 6),
+                (bolt_x + 1, tnt_y - 2),
+                (bolt_x - 1, tnt_y - 2),
+                (bolt_x + 2, tnt_y + 2),
+                (bolt_x, tnt_y),
+                (bolt_x + 1, tnt_y - 4),
+            ]
+            
+            # Glow effect
+            if flash_cycle < 0.3:  # Flash periodically
+                glow_size = int(4 + 2 * pulse)
+                glow_color = (255, 255, 200, 100)
+                glow_surf = pygame.Surface((16, 16), pygame.SRCALPHA)
+                pygame.draw.circle(glow_surf, glow_color, (8, 8), glow_size)
+                self.screen.blit(glow_surf, (bolt_x - 8, tnt_y - 8))
+            
+            # Draw bolt
+            pygame.draw.polygon(self.screen, (50, 20, 0), bolt_points)  # Shadow
+            pygame.draw.polygon(self.screen, bolt_color, [(x-1, y-1) for x, y in bolt_points])
+            
+            # Level number
+            tnt_font = pygame.font.Font(None, 14)
+            tnt_text = tnt_font.render(str(player.tnt_power_level), True, bolt_color)
+            tnt_rect = tnt_text.get_rect(center=(bolt_x + 8, tnt_y))
+            shadow = tnt_font.render(str(player.tnt_power_level), True, (0, 0, 0))
+            self.screen.blit(shadow, (tnt_rect.x + 1, tnt_rect.y + 1))
+            self.screen.blit(tnt_text, tnt_rect)
+        
         for i in range(player.max_hp):
             x = hearts_x + i * heart_spacing
             

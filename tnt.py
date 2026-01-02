@@ -21,7 +21,9 @@ class TNT:
         self.height = int(BLOCK_SIZE * size_multiplier)
         
         # Physics
+        self.velocity_x = 0
         self.velocity_y = 0
+        self.on_ground = False
         
         # Explosion - random fuse time for variety
         if fuse_time is None:
@@ -38,14 +40,29 @@ class TNT:
         # Update fuse timer
         self.fuse_time -= dt
         
-        if self.is_falling:
+        # Check if block below exists (for gravity)
+        grid_x = int(self.x // BLOCK_SIZE)
+        grid_y = int((self.y + self.height) // BLOCK_SIZE)
+        block_below = world.get_block(grid_x, grid_y)
+        
+        # If on ground but no block below, start falling
+        if self.on_ground and (not block_below or not block_below.is_solid()):
+            self.on_ground = False
+            self.is_falling = True
+            print(f"[TNT] Block destroyed below! Falling...")
+        
+        if self.is_falling or not self.on_ground:
             # Apply gravity
             self.velocity_y += GRAVITY * dt
             if self.velocity_y > TERMINAL_VELOCITY:
                 self.velocity_y = TERMINAL_VELOCITY
             
-            # Update position
+            # Update position (horizontal and vertical)
+            self.x += self.velocity_x * dt
             self.y += self.velocity_y * dt
+            
+            # Apply friction to horizontal velocity
+            self.velocity_x *= 0.95
             
             # Check collision with ground
             grid_x = int(self.x // BLOCK_SIZE)
@@ -57,10 +74,14 @@ class TNT:
                 # Land on ground
                 self.y = grid_y * BLOCK_SIZE - self.height
                 self.velocity_y = 0
+                self.velocity_x *= 0.5  # Reduce horizontal velocity on landing
                 self.is_falling = False
+                self.on_ground = True
                 if not self.has_landed:
                     self.has_landed = True
                     print(f"[TNT] Landed! Exploding in {self.fuse_time:.1f}s")
+            else:
+                self.on_ground = False
     
     def should_explode(self):
         """Check if TNT should explode"""

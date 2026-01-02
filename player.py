@@ -14,6 +14,9 @@ class Player:
         self.width = 26  # Hitbox smaller than sprite (32x32)
         self.height = 28
         
+        # Game reference (for statistics)
+        self.game = None
+        
         # Physics
         self.velocity_x = 0
         self.velocity_y = 0
@@ -858,7 +861,7 @@ class Player:
                     speed_multiplier = 1.0 + self.mining_speed_bonus
                     base_damage = AUTO_DIG_DAMAGE * dt
                     damage = base_damage * speed_multiplier
-                    if world.mine_block_at(bx, foot_y, damage):
+                    if world.mine_block_at(bx, foot_y, damage, self.game):
                         # Block was destroyed
                         print(f"[DEBUG] Block broken! Base dmg={base_damage:.2f}, Multiplier={speed_multiplier:.2f}x, Final={damage:.2f}")
                         pass

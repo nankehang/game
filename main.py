@@ -9,6 +9,7 @@ from world import World
 from player import Player
 from renderer import Renderer
 from ai_bot import AIBot
+from statistics import Statistics
 from constants import *
 
 class Game:
@@ -21,8 +22,10 @@ class Game:
         # Initialize game systems
         self.world = World()
         self.player = Player(SCREEN_WIDTH // 2, 100)
+        self.player.game = self  # Link player to game for statistics
         self.renderer = Renderer(self.screen)
         self.ai_bot = AIBot(self.player, self.world)
+        self.stats = Statistics()
         
         # Camera offset for scrolling
         self.camera_x = 0
@@ -61,8 +64,10 @@ class Game:
         # Reset game state
         self.world = World()
         self.player = Player(SCREEN_WIDTH // 2, 100)
+        self.player.game = self  # Link player to game
         self.renderer = Renderer(self.screen)
         self.ai_bot = AIBot(self.player, self.world)
+        self.stats = Statistics()  # Reset stats
         if self.menu_selection == 1:
             self.ai_bot.enabled = True
         self.camera_x = 0
@@ -99,7 +104,24 @@ class Game:
                     self.player.jump()
                 elif event.key == pygame.K_t:
                     # Drop TNT at player position (with player's power level)
-                    self.world.spawn_tnt(self.player.x, self.player.y, fuse_time=2.0, power_level=self.player.tnt_power_level)
+                    # Random fuse time for staggered explosions (Minecraft-style)
+                    import random
+                    fuse_time = random.uniform(2.0, 4.0)  # 2-4 seconds
+                    self.world.spawn_tnt(self.player.x, self.player.y, fuse_time=fuse_time, power_level=self.player.tnt_power_level)
+                elif event.key == pygame.K_RSHIFT or event.key == pygame.K_LSHIFT:
+                    # Share/Production mode: Spawn multiple TNT rapidly
+                    import random
+                    for i in range(5):  # Spawn 5 TNT
+                        offset_x = random.uniform(-40, 40)
+                        offset_y = random.uniform(-20, 20)
+                        fuse_time = random.uniform(1.5, 5.0)  # Varied fuse times
+                        self.world.spawn_tnt(
+                            self.player.x + offset_x,
+                            self.player.y + offset_y,
+                            fuse_time=fuse_time,
+                            power_level=self.player.tnt_power_level
+                        )
+                    print("[TNT] Mass spawn activated! (Share mode)")
                 elif event.key == pygame.K_r:
                     # Reset player position (respawn)
                     self.respawn_player()
@@ -139,7 +161,7 @@ class Game:
                     speed_multiplier = 1.0 + self.player.mining_speed_bonus
                     damage = MANUAL_MINE_DAMAGE * speed_multiplier
                     print(f"[DEBUG] Manual mine: Base={MANUAL_MINE_DAMAGE}, Multiplier={speed_multiplier:.2f}x, Damage={damage:.2f}")
-                    self.world.mine_block_at(world_x, world_y, damage)
+                    self.world.mine_block_at(world_x, world_y, damage, self)
         
         # Continuous input (only if AI bot is disabled and in game)
         if self.game_state == 'playing' and not self.ai_bot.enabled:
@@ -161,12 +183,17 @@ class Game:
         # Update AI bot (controls player if enabled)
         self.ai_bot.update(dt)
         
+        # Update statistics
+        self.stats.update(dt)
+        self.stats.update_achievements(dt)
+        
         # Update player
         self.player.update(dt, self.world)
         
         # Check if player died (HP = 0)
         if self.player.current_hp <= 0 and not self.is_waiting_respawn:
             print("[GAME] Player died! Respawning in 3 seconds...")
+            self.stats.on_death()
             self.is_waiting_respawn = True
             self.death_timer = 3.0  # 3 second countdown
         
@@ -330,37 +357,6 @@ class Game:
         
         self.screen.blit(depth_text, (10, 10))
         
-        # Mining Level Display (with glow effect)
-        level = self.player.mining_level
-        bonus_percent = int(self.player.mining_speed_bonus * 100)
-        
-        if level > 0:
-            # Level text with color based on level
-            if level >= 15:
-                level_color = (255, 50, 255)  # Epic purple
-            elif level >= 10:
-                level_color = (255, 215, 0)  # Gold
-            elif level >= 5:
-                level_color = (0, 255, 255)  # Cyan
-            else:
-                level_color = (0, 255, 0)  # Green
-            
-            level_text = font_large.render(f"⛏ Lv.{level} (+{bonus_percent}%)", True, level_color)
-            
-            # Glow effect when leveling up
-            if self.player.level_up_flash > 0:
-                import math
-                pulse = abs(math.sin(pygame.time.get_ticks() / 100))
-                glow_alpha = int(150 * pulse)
-                glow_surf = font_large.render(f"⛏ Lv.{level} (+{bonus_percent}%)", True, (255, 255, 255))
-                glow_surf.set_alpha(glow_alpha)
-                self.screen.blit(glow_surf, (12, 32))
-                self.screen.blit(glow_surf, (8, 32))
-                self.screen.blit(glow_surf, (10, 30))
-                self.screen.blit(glow_surf, (10, 34))
-            
-            self.screen.blit(level_text, (10, 32))
-        
         # AI Bot indicator
         if self.ai_bot.enabled:
             bot_text = font_large.render(f"🤖 AI BOT: {self.ai_bot.state.upper()}", True, (100, 255, 100))
@@ -374,31 +370,60 @@ class Game:
             self.screen.blit(glow_surf, (SCREEN_WIDTH - 248, 8))
             self.screen.blit(bot_text, (SCREEN_WIDTH - 250, 10))
         
-        # TNT Power Display
-        tnt_level = self.player.tnt_power_level
-        if tnt_level > 0:
-            tnt_bonus_percent = int(self.player.tnt_power_bonus * 100)
-            
-            # Color based on power level
-            if tnt_level >= 10:
-                tnt_color = (255, 100, 0)  # Orange-red
-            elif tnt_level >= 5:
-                tnt_color = (255, 150, 0)  # Orange
-            else:
-                tnt_color = (255, 200, 0)  # Yellow
-            
-            tnt_text = font_large.render(f"💥 TNT Lv.{tnt_level} (+{tnt_bonus_percent}%)", True, tnt_color)
-            self.screen.blit(tnt_text, (10, 65))
+        # Statistics Display (right side, compact)
+        stats = self.stats.get_summary()
+        stats_y = 40
+        stats_font = pygame.font.Font(None, 22)
         
-        # TNT statistics
-        active_tnt = len(self.world.tnt_list)
-        total_spawned = self.world.total_tnt_spawned
-        spawn_chance = TNT_BASE_SPAWN_CHANCE + (depth * TNT_DEPTH_MULTIPLIER)
-        spawn_chance = min(0.95, spawn_chance) * 100
+        # Format times
+        minutes = int(stats['play_time'] // 60)
+        seconds = int(stats['play_time'] % 60)
+        time_alive_min = int(stats['time_alive'] // 60)
+        time_alive_sec = int(stats['time_alive'] % 60)
         
-        tnt_stats = font.render(f"TNT: {active_tnt} active | {total_spawned} spawned | {spawn_chance:.0f}% chance", 
-                                True, (255, 200, 0))
-        self.screen.blit(tnt_stats, (SCREEN_WIDTH - 450, 10))
+        stat_texts = [
+            f"Blocks: {stats['blocks_mined']}",
+            f"Items: {stats['items_collected']}",
+            f"Deaths: {stats['deaths']}",
+            f"Time: {minutes}:{seconds:02d}",
+        ]
+        
+        for text in stat_texts:
+            stat_surf = stats_font.render(text, True, (255, 255, 255))
+            shadow_surf = stats_font.render(text, True, (0, 0, 0))
+            self.screen.blit(shadow_surf, (SCREEN_WIDTH - 122, stats_y + 1))
+            self.screen.blit(stat_surf, (SCREEN_WIDTH - 120, stats_y))
+            stats_y += 20
+        
+        # Achievement Popups (centered, bottom)
+        popup_y = SCREEN_HEIGHT - 100
+        for achievement in self.stats.new_achievements:
+            box_width = 350
+            box_height = 60
+            box_x = (SCREEN_WIDTH - box_width) // 2
+            
+            alpha = min(255, int(achievement['timer'] * 200)) if achievement['timer'] < 1 else 255
+            
+            popup_surface = pygame.Surface((box_width, box_height))
+            popup_surface.fill((50, 50, 50))
+            popup_surface.set_alpha(min(200, alpha))
+            self.screen.blit(popup_surface, (box_x, popup_y))
+            
+            pygame.draw.rect(self.screen, (255, 215, 0), (box_x, popup_y, box_width, box_height), 3)
+            
+            achievement_font = pygame.font.Font(None, 32)
+            desc_font = pygame.font.Font(None, 24)
+            
+            title_text = achievement_font.render(f"🏆 {achievement['name']}", True, (255, 215, 0))
+            desc_text = desc_font.render(achievement['description'], True, (200, 200, 200))
+            
+            title_rect = title_text.get_rect(center=(SCREEN_WIDTH // 2, popup_y + 20))
+            desc_rect = desc_text.get_rect(center=(SCREEN_WIDTH // 2, popup_y + 42))
+            
+            self.screen.blit(title_text, title_rect)
+            self.screen.blit(desc_text, desc_rect)
+            
+            popup_y -= 70
         
         # Controls
         controls = [

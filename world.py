@@ -4,6 +4,7 @@ Handles block grid, TNT, and particle systems
 """
 
 import random
+import math
 from block import Block
 from tnt import TNT
 from particle import Particle
@@ -79,6 +80,12 @@ class World:
         if y == GRASS_LAYER:
             if biome == 'ocean':
                 return 'water'
+            elif biome == 'desert':
+                return 'sand'
+            elif biome == 'jungle':
+                return 'jungle_grass'
+            elif biome == 'tundra':
+                return 'snow'
             else:
                 return 'grass'
         
@@ -86,6 +93,12 @@ class World:
         if y < DIRT_LAYER:
             if biome == 'ocean':
                 return 'sand'
+            elif biome == 'desert':
+                return 'red_sand'
+            elif biome == 'jungle':
+                return 'dirt'
+            elif biome == 'tundra':
+                return 'ice'
             else:
                 return 'dirt'
         
@@ -116,22 +129,39 @@ class World:
         # Default to stone or biome-specific stone
         if biome == 'ocean':
             return 'ocean_stone'
+        elif biome == 'jungle':
+            # Add occasional vines and mossy stone
+            if random.random() < 0.05:
+                return 'mossy_stone'
+            return 'stone'
+        elif biome == 'desert':
+            # Sandstone in desert
+            if depth < 10:
+                return 'sandstone'
+            return 'stone'
+        elif biome == 'tundra':
+            # Packed ice in tundra
+            if depth < 5:
+                return 'packed_ice'
+            return 'stone'
         else:
             return 'stone'
     
     def _get_biome(self, x):
         """Determine biome based on X position"""
-        # Divide world into biomes
-        biome_size = self.width // 4
+        # Divide world into 5 biomes
+        biome_size = self.width // 5
         
         if x < biome_size:
-            return 'ocean'  # Left side is ocean
+            return 'tundra'  # Snow biome
         elif x < biome_size * 2:
-            return 'normal'  # Normal terrain
+            return 'ocean'  # Ocean biome
         elif x < biome_size * 3:
             return 'normal'  # Normal terrain
+        elif x < biome_size * 4:
+            return 'jungle'  # Jungle biome
         else:
-            return 'desert'  # Right side could be desert (future)
+            return 'desert'  # Desert biome
     
     def _determine_nether_block(self, x, y):
         """Determine block type in the Nether dimension"""
@@ -173,7 +203,7 @@ class World:
         else:
             self.blocks[(x, y)] = Block(block_type, x, y)
     
-    def mine_block_at(self, x, y, damage):
+    def mine_block_at(self, x, y, damage, game=None):
         """
         Apply damage to block at position
         Returns True if block was destroyed
@@ -186,6 +216,10 @@ class World:
         if block.damage(damage):
             # Block destroyed - create particles
             self._create_break_particles(x, y, block.type)
+            
+            # Track statistics
+            if game and hasattr(game, 'stats'):
+                game.stats.on_block_mined(y)
             
             # Drop items from ore blocks
             if block.type in ['coal', 'iron', 'gold', 'diamond']:
@@ -223,13 +257,14 @@ class World:
         grid_x = int(x // BLOCK_SIZE)
         grid_y = int(y // BLOCK_SIZE)
         
-        # Check if position is valid
-        if self.get_block(grid_x, grid_y):
+        # Check if position is valid (but allow air)
+        block = self.get_block(grid_x, grid_y)
+        if block and block.is_solid():
             return  # Can't spawn in solid block
         
         tnt = TNT(x, y, fuse_time, power_level)
         self.tnt_list.append(tnt)
-        print(f"[TNT] Spawned at ({grid_x}, {grid_y}) with {tnt.fuse_time:.1f}s fuse, Power Level: {power_level}")
+        print(f"[TNT] Ignited at ({grid_x}, {grid_y}) with {tnt.fuse_time:.1f}s fuse, Power Level: {power_level}")
     
     def spawn_item(self, x, y, item_type):
         """Spawn collectible item at world position"""
@@ -258,9 +293,15 @@ class World:
     
     def _explode_tnt(self, tnt, player=None, game=None):
         """Handle TNT explosion"""
-        # Play explosion sound
+        # Play explosion sound with distance-based volume
         if SOUND_ENABLED:
-            sound_gen.play_explosion()
+            volume = 1.0
+            if player:
+                # Calculate distance from player
+                distance = math.sqrt((tnt.x - player.x)**2 + (tnt.y - player.y)**2)
+                max_distance = 500  # Maximum hearing distance
+                volume = max(0.1, 1.0 - (distance / max_distance))
+            sound_gen.play_explosion(volume)
         
         center_x = int(tnt.x // BLOCK_SIZE)
         center_y = int(tnt.y // BLOCK_SIZE)
@@ -337,6 +378,53 @@ class World:
                     tnt_damage = 2 + (tnt.power_level // 2)
                     player.apply_knockback(0, -TNT_KNOCKBACK_FORCE * 1.5, 1.0, damage=tnt_damage)
                     print(f"[TNT] DIRECT HIT! Maximum knockback! Damage: {tnt_damage}")
+        
+        # Apply knockback to nearby TNT entities (chain reaction)
+        tnt_knockback_radius = (TNT_EXPLOSION_RADIUS + 3) * BLOCK_SIZE
+        for other_tnt in self.tnt_list:
+            if other_tnt is tnt:  # Skip the exploding TNT itself
+                continue
+                
+            # Calculate distance from explosion center
+            dx = other_tnt.x - tnt.x
+            dy = other_tnt.y - tnt.y
+            distance = (dx * dx + dy * dy) ** 0.5
+            
+            if distance < tnt_knockback_radius and distance > 0:
+                # Calculate knockback force
+                dir_x = dx / distance
+                dir_y = dy / distance
+                
+                # Force decreases with distance
+                distance_ratio = 1.0 - (distance / tnt_knockback_radius)
+                force_multiplier = distance_ratio ** 0.5
+                
+                # TNT gets stronger knockback than player
+                base_force = TNT_KNOCKBACK_FORCE * 2.5
+                
+                # Apply force with upward bias
+                knockback_x = dir_x * base_force * force_multiplier
+                knockback_y = dir_y * base_force * force_multiplier
+                
+                # Add upward component to make TNT fly
+                if knockback_y > 0:  # If pushing down
+                    knockback_y *= 0.3
+                else:  # If pushing up
+                    knockback_y *= 1.2
+                
+                # Ensure minimum upward component
+                knockback_y = min(knockback_y, -base_force * 0.4)
+                
+                # Apply velocity to TNT
+                other_tnt.velocity_x = knockback_x
+                other_tnt.velocity_y = knockback_y
+                other_tnt.is_falling = True
+                other_tnt.on_ground = False
+                
+                # Reduce fuse time slightly to create cascading effect
+                other_tnt.fuse_time = min(other_tnt.fuse_time, random.uniform(1.0, 2.5))
+                
+                print(f"[TNT] Chain reaction! Pushed TNT at distance {distance:.1f}, Force: ({knockback_x:.1f}, {knockback_y:.1f}), New fuse: {other_tnt.fuse_time:.1f}s")
         
         # Destroy blocks in radius (with TNT power bonus)
         destroyed_count = 0
@@ -434,7 +522,7 @@ class World:
     def update(self, dt, player=None, game=None):
         """Update TNT and particles"""
         # Update meteor shower system
-        self._update_meteor_shower(dt)
+        self._update_meteor_shower(dt, player)
         
         # Update TNT spawn timer
         self.tnt_spawn_timer += dt
@@ -481,6 +569,10 @@ class World:
             # Check if player collects item
             if player and item.can_collect(player):
                 print(f"[ITEM] Player collected {item.item_type}!")
+                
+                # Track in statistics (get game reference from player if available)
+                if hasattr(player, 'game') and player.game and hasattr(player.game, 'stats'):
+                    player.game.stats.on_item_collected(item.item_type)
                 
                 # Special item: Heart (increases max HP)
                 if item.item_type == 'heart':
@@ -550,7 +642,7 @@ class World:
         
         return visible
 
-    def _update_meteor_shower(self, dt):
+    def _update_meteor_shower(self, dt, player=None):
         """Update meteor shower event system"""
         self.meteor_shower_timer += dt
         
@@ -571,7 +663,8 @@ class World:
             # Spawn meteors during shower (every 0.5-1.2 seconds for chill effect)
             if self.meteor_spawn_timer >= random.uniform(0.5, 1.2):
                 self.meteor_spawn_timer = 0
-                self._spawn_meteor()
+                # Pass player from update call chain if available
+                self._spawn_meteor(player)
             
             # End shower
             if self.meteor_shower_duration <= 0:
@@ -580,10 +673,19 @@ class World:
                 self.meteor_shower_interval = random.uniform(40, 60)  # Next shower in 40-60s
                 print("[METEOR SHOWER] 🌙 The sky calms down... peaceful night returns.")
     
-    def _spawn_meteor(self):
-        """Spawn a single meteor from the sky"""
-        # Spawn from top of screen, slightly off to the right
-        spawn_x = random.uniform(self.width * BLOCK_SIZE * 0.3, self.width * BLOCK_SIZE * 0.9)
+    def _spawn_meteor(self, player=None):
+        """Spawn a single meteor from the sky near player"""
+        # Spawn near player if available, otherwise random
+        if player:
+            # Spawn within 200 pixels of player
+            player_x = player.x
+            spawn_x = player_x + random.uniform(-200, 200)
+            # Clamp to world bounds
+            spawn_x = max(50, min(spawn_x, self.width * BLOCK_SIZE - 50))
+        else:
+            # Fallback to random spawn
+            spawn_x = random.uniform(self.width * BLOCK_SIZE * 0.3, self.width * BLOCK_SIZE * 0.9)
+        
         spawn_y = -20  # Above screen
         
         meteor = Meteor(spawn_x, spawn_y)

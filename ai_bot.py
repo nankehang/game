@@ -17,12 +17,17 @@ class AIBot:
         # AI state
         self.target_x = None
         self.target_y = None
-        self.state = 'explore'  # explore, mine, collect, flee
+        self.state = 'explore'  # explore, mine, collect, flee, place_tnt
         self.state_timer = 0
         self.decision_cooldown = 0
         
+        # TNT strategy
+        self.tnt_cooldown = 0  # Cooldown between TNT placements
+        self.tnt_placed = False
+        self.flee_after_tnt = False
+        
         # Behavior settings
-        self.danger_radius = 100  # Distance to flee from TNT
+        self.danger_radius = 150  # Distance to flee from TNT (increased)
         self.collect_radius = 250  # Distance to detect items (increased)
         self.mine_depth_target = 50  # How deep to mine (increased for more exploration)
         
@@ -33,6 +38,9 @@ class AIBot:
             
         self.state_timer += dt
         self.decision_cooldown -= dt
+        self.tnt_cooldown -= dt
+        if self.tnt_cooldown < 0:
+            self.tnt_cooldown = 0
         
         # Make new decision every 0.5 seconds
         if self.decision_cooldown <= 0:
@@ -44,14 +52,21 @@ class AIBot:
     
     def make_decision(self):
         """Decide what action to take"""
+        # Reset TNT placed flag when cooldown finishes
+        if self.tnt_cooldown <= 0 and self.tnt_placed:
+            self.tnt_placed = False
+
         # Priority 1: Flee from nearby TNT
         nearest_tnt = self.find_nearest_tnt()
         if nearest_tnt:
             distance = math.sqrt((nearest_tnt.x - self.player.x)**2 + (nearest_tnt.y - self.player.y)**2)
             if distance < self.danger_radius:
                 self.state = 'flee'
-                self.target_x = self.player.x + (self.player.x - nearest_tnt.x) * 2  # Run away
-                self.target_y = max(0, self.player.y - 100)  # Jump up
+                # Calculate safe escape direction
+                escape_direction = 1 if self.player.x > nearest_tnt.x else -1
+                self.target_x = self.player.x + (escape_direction * 150)
+                self.target_x = max(50, min(self.target_x, CHUNK_WIDTH * BLOCK_SIZE - 50))
+                self.target_y = self.player.y - 50  # Try to go up
                 return
         
         # Priority 2: Collect nearby items
@@ -64,14 +79,22 @@ class AIBot:
                 self.target_y = nearest_item.y
                 return
         
-        # Priority 3: Mine downward if not deep enough
+        # Priority 3: Strategic TNT placement when deep enough
         player_block_y = int(self.player.y // BLOCK_SIZE)
+        if player_block_y > 15 and self.tnt_cooldown <= 0 and not nearest_tnt:
+            # Place TNT to blast through blocks
+            self.state = 'place_tnt'
+            self.target_x = self.player.x
+            self.target_y = self.player.y
+            return
+        
+        # Priority 4: Mine downward if not deep enough
         if player_block_y < self.mine_depth_target:
             self.state = 'mine'
             self.target_x = self.player.x
             self.target_y = self.player.y + BLOCK_SIZE * 3
         else:
-            # Priority 4: Explore horizontally
+            # Priority 5: Explore horizontally
             self.state = 'explore'
             # Random horizontal movement
             explore_range = 200
@@ -81,8 +104,12 @@ class AIBot:
     
     def execute_behavior(self, dt):
         """Execute the current behavior state"""
-        if not self.target_x:
-            return
+        # If no target, pick a wander target so the bot keeps moving
+        if self.target_x is None:
+            wander_dir = random.choice([-1, 1])
+            self.target_x = max(50, min(self.player.x + wander_dir * 180, CHUNK_WIDTH * BLOCK_SIZE - 50))
+            self.target_y = self.player.y
+            self.state = 'explore'
         
         # Calculate direction to target
         dx = self.target_x - self.player.x
@@ -97,11 +124,32 @@ class AIBot:
         else:
             self.player.move_direction = 0
         
-        # Jumping behavior
+        # Jumping / special behaviors
         if self.state == 'flee':
-            # Jump when fleeing and on ground (but not every frame)
-            if self.player.on_ground and self.state_timer % 0.8 < 0.1:
-                self.player.jump()
+            # Run directly toward escape target
+            if dx > 5:
+                self.player.move_direction = 1
+            elif dx < -5:
+                self.player.move_direction = -1
+            # Jump over obstacles or to climb up
+            if self.player.on_ground:
+                if self.is_obstacle_ahead():
+                    self.player.jump()
+                elif dy < -20:
+                    self.player.jump()
+        elif self.state == 'place_tnt':
+            # Place TNT and immediately set flee target
+            if not self.tnt_placed:
+                self.player.move_direction = 0
+                self.world.spawn_tnt(self.player.x, self.player.y, fuse_time=2.5, power_level=self.player.tnt_power_level)
+                self.tnt_placed = True
+                self.tnt_cooldown = 8.0  # Wait 8 seconds before next TNT
+                print("[AI BOT] Placed TNT! Fleeing...")
+                flee_dir = -1 if random.random() < 0.5 else 1
+                self.target_x = max(50, min(self.player.x + flee_dir * 200, CHUNK_WIDTH * BLOCK_SIZE - 50))
+                self.target_y = self.player.y - 40
+                self.state = 'flee'
+                return
         elif self.state == 'mine':
             # Don't jump while mining - stay still
             self.try_mine_down()
@@ -136,6 +184,12 @@ class AIBot:
                     block = self.world.get_block(check_x, player_block_y)
                     if block and block != 'air':
                         self.player.jump()
+
+        # If exploring and reached target, pick a new wander target to keep moving
+        if self.state == 'explore' and abs(dx) <= 5:
+            wander_dir = random.choice([-1, 1])
+            self.target_x = max(50, min(self.player.x + wander_dir * 200, CHUNK_WIDTH * BLOCK_SIZE - 50))
+            self.target_y = self.player.y
     
     def try_mine_down(self):
         """Try to mine blocks below the player"""

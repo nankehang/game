@@ -27,7 +27,7 @@ MANUAL_MINE_DAMAGE = 50  # Damage per click
 
 # TNT
 TNT_FUSE_TIME = 3.0  # seconds
-TNT_EXPLOSION_RADIUS = 3  # blocks
+TNT_EXPLOSION_RADIUS = 5  # blocks (increased for more destruction)
 TNT_SPAWN_INTERVAL = 5.0  # Base seconds between TNT spawns
 TNT_MIN_FUSE = 2.0  # Minimum fuse time
 TNT_MAX_FUSE = 3.5  # Maximum fuse time
@@ -60,6 +60,17 @@ BLOCK_COLORS = {
     'sand': (230, 220, 170),
     'sandstone': (200, 180, 130),
     'ocean_stone': (100, 140, 180),
+    # Desert blocks
+    'cactus': (20, 150, 20),
+    'red_sand': (180, 100, 50),
+    # Jungle blocks
+    'jungle_grass': (0, 180, 0),
+    'vines': (50, 120, 30),
+    'mossy_stone': (100, 130, 100),
+    # Tundra/Snow blocks
+    'snow': (255, 255, 255),
+    'ice': (200, 230, 255),
+    'packed_ice': (180, 220, 250),
 }
 
 # Block properties
@@ -87,6 +98,17 @@ BLOCK_HARDNESS = {
     'sand': 0.5,
     'sandstone': 1.5,
     'ocean_stone': 2.5,
+    # Desert blocks
+    'cactus': 0.3,
+    'red_sand': 0.5,
+    # Jungle blocks
+    'jungle_grass': 0.5,
+    'vines': 0.1,
+    'mossy_stone': 2.0,
+    # Tundra blocks
+    'snow': 0.2,
+    'ice': 0.8,
+    'packed_ice': 1.5,
 }
 
 # Ore spawn rates (chance per block at appropriate depth)
